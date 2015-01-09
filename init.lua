@@ -22,47 +22,21 @@ local function open_help()
    help_str, 2)
 end
 
-local function open_dictionary()
-  --hydra.alert("Lexicon, at your service.", 0.75)
-  hs.application.launchOrFocus("Dictionary")
-end
-
-local function open_terminal()
-	hs.application.launchOrFocus("iterm")
-end
-
-local function open_pathfinder()
-	hs.application.launchOrFocus("Path Finder")
-end
-
-local function open_chrome()
-	hs.application.launchOrFocus("Google Chrome")
-end
-
-local function open_trello()
-	hs.application.launchOrFocus("Trello X")
-end
-
-local function open_quiver()
-  hs.application.launchOrFocus("Quiver")
-end
 -- Launch applications
-hs.hotkey.bind(mash_app, 'D', open_dictionary)
-hs.hotkey.bind(mash_app, '1', open_terminal)
-hs.hotkey.bind(mash_app, '2', open_pathfinder)
-hs.hotkey.bind(mash_app, '3', open_chrome)
+hs.hotkey.bind(mash_app, 'D', function () hs.application.launchOrFocus("Dictionary") end)
+hs.hotkey.bind(mash_app, '1', function () hs.application.launchOrFocus("iterm") end)
+hs.hotkey.bind(mash_app, '2', function () hs.application.launchOrFocus("Path Finder") end)
+hs.hotkey.bind(mash_app, '3', function () hs.application.launchOrFocus("Google Chrome") end)
 -- mash_app '4' reserved for dash global key
-hs.hotkey.bind(mash_app, '5', open_trello)
-hs.hotkey.bind(mash_app, '6', open_quiver)
+hs.hotkey.bind(mash_app, '5', function () hs.application.launchOrFocus("Trello X") end)
+hs.hotkey.bind(mash_app, '6', function () hs.application.launchOrFocus("Quiver") end)
 hs.hotkey.bind(mash_app, '/', open_help)
 
 --hs.hotkey.bind(mash, '0',hs.hints.windowHints)
 
 -- global operations
-hs.hotkey.bind(mash, ';', 
-  function() hs.grid.snap(hs.window.focusedWindow()) end)
-hs.hotkey.bind(mash, "'", 
-  function() hs.fnutil.map(hs.window.visibleWindows(), hs.grid.snap) end)
+hs.hotkey.bind(mash, ';', function() hs.grid.snap(hs.window.focusedWindow()) end)
+hs.hotkey.bind(mash, "'", function() hs.fnutil.map(hs.window.visibleWindows(), hs.grid.snap) end)
 
 -- adjust grid size
 hs.hotkey.bind(mash, '=', function() hs.grid.adjustWidth( 1) end)
@@ -71,14 +45,10 @@ hs.hotkey.bind(mash, ']', function() hs.grid.adjustHeight( 1) end)
 hs.hotkey.bind(mash, '[', function() hs.grid.adjustHeight(-1) end)
 
 -- change focus
-hs.hotkey.bind(mashshift, 'H',
- function() hs.window.focusedWindow():focusWindowWest() end)
-hs.hotkey.bind(mashshift, 'L',
- function() hs.window.focusedWindow():focusWindowEast() end)
-hs.hotkey.bind(mashshift, 'K', 
-  function() hs.window.focusedWindow():focusWindowNorth() end)
-hs.hotkey.bind(mashshift, 'J', 
-  function() hs.window.focusedWindow():focusWindowSouth() end)
+hs.hotkey.bind(mashshift, 'H', function() hs.window.focusedWindow():focusWindowWest() end)
+hs.hotkey.bind(mashshift, 'L', function() hs.window.focusedWindow():focusWindowEast() end)
+hs.hotkey.bind(mashshift, 'K', function() hs.window.focusedWindow():focusWindowNorth() end)
+hs.hotkey.bind(mashshift, 'J', function() hs.window.focusedWindow():focusWindowSouth() end)
 
 hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
 
