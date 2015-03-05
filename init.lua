@@ -1,5 +1,6 @@
--- refers to grid.lua in this directory, taken from the Hydra wiki:  
--- https://github.com/sdegutis/hydra/wiki/Useful-Hydra-libraries
+-- Hammerspoon configuration, heavily influenced by sdegutis default configuration
+
+require "pomodoor"
 
 -- init grid
 hs.grid.MARGINX = 0
@@ -10,16 +11,19 @@ hs.grid.GRIDHEIGHT = 3
 -- disable animation
 hs.window.animationDuration = 0
 
--- hotkey mash
-local mash_app = {"cmd", "alt", "ctrl"}
-local mash = {"ctrl", "alt"}
-local mashshift = {"ctrl", "alt", "shift"}
 
+-- hotkey mash
+local mash       = {"ctrl", "alt"}
+local mash_app 	 = {"cmd", "alt", "ctrl"}
+local mash_shift = {"ctrl", "alt", "shift"}
+
+--------------------------------------------------------------------------------
+
+-- application help
 local function open_help()
   help_str = "d - Dictionary, 1 - Terminal, 2 - Pathfinder, " ..
             "3 - Chrome, 4 - Dash, 5 - Trello, 6 - Quiver"        
-  hs.alert.show(
-   help_str, 2)
+  hs.alert.show(help_str, 2)
 end
 
 -- Launch applications
@@ -32,8 +36,6 @@ hs.hotkey.bind(mash_app, '5', function () hs.application.launchOrFocus("Trello X
 hs.hotkey.bind(mash_app, '6', function () hs.application.launchOrFocus("Quiver") end)
 hs.hotkey.bind(mash_app, '/', open_help)
 
---hs.hotkey.bind(mash, '0',hs.hints.windowHints)
-
 -- global operations
 hs.hotkey.bind(mash, ';', function() hs.grid.snap(hs.window.focusedWindow()) end)
 hs.hotkey.bind(mash, "'", function() hs.fnutil.map(hs.window.visibleWindows(), hs.grid.snap) end)
@@ -45,10 +47,10 @@ hs.hotkey.bind(mash, ']', function() hs.grid.adjustHeight( 1) end)
 hs.hotkey.bind(mash, '[', function() hs.grid.adjustHeight(-1) end)
 
 -- change focus
-hs.hotkey.bind(mashshift, 'H', function() hs.window.focusedWindow():focusWindowWest() end)
-hs.hotkey.bind(mashshift, 'L', function() hs.window.focusedWindow():focusWindowEast() end)
-hs.hotkey.bind(mashshift, 'K', function() hs.window.focusedWindow():focusWindowNorth() end)
-hs.hotkey.bind(mashshift, 'J', function() hs.window.focusedWindow():focusWindowSouth() end)
+hs.hotkey.bind(mash_shift, 'H', function() hs.window.focusedWindow():focusWindowWest() end)
+hs.hotkey.bind(mash_shift, 'L', function() hs.window.focusedWindow():focusWindowEast() end)
+hs.hotkey.bind(mash_shift, 'K', function() hs.window.focusedWindow():focusWindowNorth() end)
+hs.hotkey.bind(mash_shift, 'J', function() hs.window.focusedWindow():focusWindowSouth() end)
 
 hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
 
@@ -71,4 +73,6 @@ hs.hotkey.bind(mash, 'O', hs.grid.resizeWindowWider)
 -- Window Hints
 hs.hotkey.bind(mash, '.', hs.hints.windowHints)
 
-
+-- pomodoro key binding
+hs.hotkey.bind(mash, '9', function() pom_enable() end)
+hs.hotkey.bind(mash, '0', function() pom_disable() end)
