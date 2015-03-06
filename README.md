@@ -1,5 +1,8 @@
  # .hammerspoon
+ 
  Personal Hammerspoon configuration
- pomodoor.lua is a simple menu based pomodoro timer module.
+ 
+ * init.lua     - Move/ resize windows using keyboard shortcuts
+ * pomodoor.lua - Simple, menu based pomodoro timer module.
 
 
