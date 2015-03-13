@@ -16,17 +16,22 @@ local function pom_update_display()
 end
 
 -- stop the clock
+-- Stateful:
+-- * Disabling once will pause the countdown
+-- * Disabling twice will reset the countdown
+-- * Disabling trice will shut down and hide the pomodoro timer
 function pom_disable()
-  -- disabling pomodoro twice will reset the countdown
+  
   local pom_was_active = pom_is_active
   pom_is_active = false
 
-  if (pom_disable_count == 0) then
+  if (pom_disable_count     == 0) then
      if (pom_was_active) then
       pom_timer:stop()
     end
   elseif (pom_disable_count == 1) then
-    pom_time_left     = pom_work_period_sec
+    pom_time_left         = pom_work_period_sec
+    pom_curr_active_type  = "work"
     pom_update_display()
   elseif (pom_disable_count >= 2) then
     if pom_menu == nil then 
@@ -91,7 +96,7 @@ function pom_enable()
   pom_timer:start()
 end
 
--- Usage examples:
+-- Use examples:
 
 -- init pomodoro -- show menu immediately
 -- pom_create_menu()
