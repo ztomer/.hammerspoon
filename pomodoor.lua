@@ -25,7 +25,7 @@ function pom_disable()
   local pom_was_active = pom_is_active
   pom_is_active = false
 
-  if (pom_disable_count     == 0) then
+  if (pom_disable_count == 0) then
      if (pom_was_active) then
       pom_timer:stop()
     end
