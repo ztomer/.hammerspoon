@@ -22,19 +22,20 @@ local mash_test	 = {"cntrl", "shift"}
 
 -- application help
 local function open_help()
-  help_str = 	"d - Dictionary, 1 - Terminal, 2 - Pathfinder, " ..
-            	"3 - Chrome, 4 - Dash, 5 - Trello, 6 - Quiver"        
+  help_str = 	"d - Dictionary, 1 - Terminal, 2 - Calendar, " ..
+            	"3 - Chrome, 4 - Dash, 5 - Trello, 6 - Quiver, 7 - Reeder"        
   hs.alert.show(help_str, 2)
 end
 
 -- Launch applications
 hs.hotkey.bind(mash_app, 'D', function () hs.application.launchOrFocus("Dictionary") end)
 hs.hotkey.bind(mash_app, '1', function () hs.application.launchOrFocus("iterm") end)
-hs.hotkey.bind(mash_app, '2', function () hs.application.launchOrFocus("Path Finder") end)
+hs.hotkey.bind(mash_app, '2', function () hs.application.launchOrFocus("Fantastical 2") end)
 hs.hotkey.bind(mash_app, '3', function () hs.application.launchOrFocus("Google Chrome") end)
 -- mash_app '4' reserved for dash global key
 hs.hotkey.bind(mash_app, '5', function () hs.application.launchOrFocus("Trello X") end)
 hs.hotkey.bind(mash_app, '6', function () hs.application.launchOrFocus("Quiver") end)
+hs.hotkey.bind(mash_app, '7', function () hs.application.launchOrFocus("Reeder") end)
 hs.hotkey.bind(mash_app, '/', open_help)
 
 -- global operations
