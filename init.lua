@@ -79,3 +79,13 @@ hs.hotkey.bind(mash, '.', hs.hints.windowHints)
 -- pomodoro key binding
 hs.hotkey.bind(mash, '9', function() pom_enable() end)
 hs.hotkey.bind(mash, '0', function() pom_disable() end)
+
+-- snap all newly launched windows
+hs.application.watcher.new(
+	function(appName, event)
+		if event == hs.application.watcher.launched then
+			local app = hs.appfinder.appFromName(appName)
+			hs.fnutils.map(app:allWindows(), hs.grid.snap)
+		end
+	end
+):start()
