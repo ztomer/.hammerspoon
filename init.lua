@@ -81,11 +81,16 @@ hs.hotkey.bind(mash, '9', function() pom_enable() end)
 hs.hotkey.bind(mash, '0', function() pom_disable() end)
 
 -- snap all newly launched windows
-hs.application.watcher.new(
-	function(appName, event)
-		if event == hs.application.watcher.launched then
-			local app = hs.appfinder.appFromName(appName)
-			hs.fnutils.map(app:allWindows(), hs.grid.snap)
+local function auto_tile(appName, event)
+	if event == hs.application.watcher.launched then
+		local app = hs.appfinder.appFromName(appName)
+		-- protect against unexpected restarting windows
+		if app == nil then
+			return
 		end
+		hs.fnutils.map(app:allWindows(), hs.grid.snap)
 	end
-):start()
+end
+
+-- start app launch watcher
+hs.application.watcher.new(auto_tile):start()
