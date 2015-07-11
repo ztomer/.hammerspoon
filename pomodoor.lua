@@ -83,6 +83,7 @@ local function pom_create_menu(pom_origin)
   end
 end
 
+-- start the pomodoro timer
 function pom_enable()
   pom_disable_count = 0;
   if (pom_is_active) then
@@ -96,6 +97,11 @@ function pom_enable()
   pom_timer:start()
 end
 
+-- reset work count
+-- TODO - reset automatically every day
+function pom_reset_work()
+  pom_work_count = 0;
+end
 -- Use examples:
 
 -- init pomodoro -- show menu immediately

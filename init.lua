@@ -79,6 +79,7 @@ hs.hotkey.bind(mash, '.', hs.hints.windowHints)
 -- pomodoro key binding
 hs.hotkey.bind(mash, '9', function() pom_enable() end)
 hs.hotkey.bind(mash, '0', function() pom_disable() end)
+hs.hotkey.bind(mash_shift, '0', function() pom_reset_work() end)
 
 -- snap all newly launched windows
 local function auto_tile(appName, event)
