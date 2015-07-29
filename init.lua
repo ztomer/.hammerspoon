@@ -19,24 +19,20 @@ local mash_shift = {"ctrl", "alt", "shift"}
 local mash_test	 = {"cntrl", "shift"}	
 
 --------------------------------------------------------------------------------
-
--- application help
-local function open_help()
-  help_str = 	"d - Dictionary, 1 - Terminal, 2 - Calendar, " ..
-            	"3 - Chrome, 4 - Dash, 5 - Trello, 6 - Quiver, 7 - Reeder"        
-  hs.alert.show(help_str, 2)
-end
+appCuts = {
+  d = 'Dictionary',
+  i = 'iterm',
+  c = 'Google chrome',
+  t = 'Trello X',
+  -- 4 reserved for dash shortcut 
+  q = 'Quiver',
+  e = 'emacs'
+}
 
 -- Launch applications
-hs.hotkey.bind(mash_app, 'D', function () hs.application.launchOrFocus("Dictionary") end)
-hs.hotkey.bind(mash_app, '1', function () hs.application.launchOrFocus("iterm") end)
-hs.hotkey.bind(mash_app, '2', function () hs.application.launchOrFocus("Fantastical 2") end)
-hs.hotkey.bind(mash_app, '3', function () hs.application.launchOrFocus("Google Chrome") end)
--- mash_app '4' reserved for dash global key
-hs.hotkey.bind(mash_app, '5', function () hs.application.launchOrFocus("Trello X") end)
-hs.hotkey.bind(mash_app, '6', function () hs.application.launchOrFocus("Quiver") end)
-hs.hotkey.bind(mash_app, '7', function () hs.application.launchOrFocus("Reeder") end)
-hs.hotkey.bind(mash_app, '/', open_help)
+for key, app in pairs(appCuts) do
+  hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
+end
 
 -- global operations
 hs.hotkey.bind(mash, ';', function() hs.grid.snap(hs.window.focusedWindow()) end)
