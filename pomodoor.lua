@@ -6,6 +6,8 @@ local pom_curr_active_type = "work" -- {"work", "rest"}
 local pom_is_active        = false
 local pom_time_left        = pom_work_period_sec
 local pom_disable_count    = 0
+local pom_enable_color_bar = 1
+local pom_max_time_sec     = pom_work_period_sec
 
 -- update display
 local function pom_update_display()
@@ -14,6 +16,67 @@ local function pom_update_display()
   local str = string.format ("[%s|%02d:%02d|#%02d]", pom_curr_active_type, time_min, time_sec, pom_work_count)
   pom_menu:setTitle(str)
 end
+
+--------------------------------------------------------------------------------
+-- Color bar for pomodoor
+--------------------------------------------------------------------------------
+local mod={}
+mod.config = {
+  enable_indicator = true,
+  all_screens      = true,
+  indicator_height = 0.2, -- ratio from the height of the menubar (0..1)
+  indicator_alpha  = 0.3,
+  indicator_in_all_spaces = true,
+  color_time_remaining = hs.drawing.color.green,
+  color_time_used      = hs.drawing.color.red,
+  
+  c_left = hs.drawing.rectangle(hs.geometry.rect(0,0,0,0)),
+  c_used = hs.drawing.rectangle(hs.geometry.rect(0,0,0,0))
+}
+
+function pom_del_indicators()
+  mod.config.c_left:delete()
+  mod.config.c_used:delete()
+end
+
+function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
+  local screeng                  = screen:fullFrame()
+  local screen_frame_height      = screen:frame().y
+  local screen_full_frame_height = screeng.y
+  local height_delta             = screen_frame_height - screen_full_frame_height
+  local height                   = mod.config.indicator_height * (height_delta)
+
+  target_draw:setSize(hs.geometry.rect(screeng.x + offset, screen_full_frame_height, width, height))
+  target_draw:setTopLeft(hs.geometry.point(screeng.x + offset, screen_full_frame_height))
+  target_draw:setFillColor(fill_color)
+  target_draw:setFill(true)
+  target_draw:setAlpha(mod.config.indicator_alpha)
+  target_draw:setLevel(hs.drawing.windowLevels.overlay)
+  target_draw:setStroke(false)
+  if mod.config.indicator_in_all_spaces then
+    target_draw:setBehavior(hs.drawing.windowBehaviors.canJoinAllSpaces)
+  end
+  target_draw:show()
+end
+
+function pom_draw_indicator(time_left, max_time)
+  if mod.config.all_screens then
+    screens = hs.screen.allScreens()
+  else
+    screens = { hs.screen.mainScreen() }
+  end
+  for i,screen in ipairs(screens) do
+    screen = hs.screen.mainScreen()
+    local screeng    = screen:fullFrame()
+    local time_ratio = time_left / max_time
+    local width      = math.ceil(screeng.w * time_ratio)
+    local left_width = screeng.w - width
+
+    pom_draw_on_menu(mod.config.c_left, screen, left_width, width,      mod.config.color_time_remaining)
+    pom_draw_on_menu(mod.config.c_used, screen, 0,          left_width, mod.config.color_time_used)  
+  end 
+end
+--------------------------------------------------------------------------------
 
 -- stop the clock
 -- Stateful:
@@ -42,6 +105,7 @@ function pom_disable()
     pom_menu = nil
     pom_timer:stop()
     pom_timer = nil
+    pom_del_indicators()
   end
 
   pom_disable_count = pom_disable_count + 1
@@ -62,12 +126,20 @@ local function pom_update_time()
         pom_work_count        =  pom_work_count + 1 
         pom_curr_active_type  = "rest"
         pom_time_left         = pom_rest_period_sec
+        pom_max_time_sec      = pom_rest_period_sec
       else 
           hs.alert.show("Done resting",2)
           pom_curr_active_type  = "work"
-          pom_time_left         = pom_work_period_sec   
+          pom_time_left         = pom_work_period_sec
+          pom_max_time_sec      = pom_work_period_sec 
       end
     end
+
+    -- draw color bar indicator, if enabled.
+    if (pom_enable_color_bar == 1) then
+      pom_draw_indicator(pom_time_left, pom_max_time_sec)
+    end
+
   end
 end
 
@@ -90,6 +162,7 @@ function pom_enable()
     return
   elseif pom_timer == nil then
     pom_create_menu()
+    --pom_init_indicator()
     pom_timer = hs.timer.new(1, pom_update_menu)
   end
 
