@@ -1,28 +1,10 @@
 -- Pomodoro module
-local pom_work_period_sec  = 25 * 60
-local pom_rest_period_sec  = 5 * 60
-local pom_work_count       = 0
-local pom_curr_active_type = "work" -- {"work", "rest"}
-local pom_is_active        = false
-local pom_time_left        = pom_work_period_sec
-local pom_disable_count    = 0
-local pom_enable_color_bar = 1
-local pom_max_time_sec     = pom_work_period_sec
-
--- update display
-local function pom_update_display()
-  local time_min = math.floor( (pom_time_left / 60))
-  local time_sec = pom_time_left - (time_min * 60)
-  local str = string.format ("[%s|%02d:%02d|#%02d]", pom_curr_active_type, time_min, time_sec, pom_work_count)
-  pom_menu:setTitle(str)
-end
 
 --------------------------------------------------------------------------------
--- Color bar for pomodoor
+-- Configuration variables
 --------------------------------------------------------------------------------
-local mod={}
-mod.config = {
-  enable_indicator = true,
+local pom={}
+pom.bar = {
   all_screens      = true,
   indicator_height = 0.2, -- ratio from the height of the menubar (0..1)
   indicator_alpha  = 0.3,
@@ -34,9 +16,37 @@ mod.config = {
   c_used = hs.drawing.rectangle(hs.geometry.rect(0,0,0,0))
 }
 
+pom.config = {
+  enable_color_bar = true,
+  work_period_sec  = 25 * 60,
+  rest_period_sec  = 5 * 60,
+  
+}
+
+pom.var = { 
+  is_active        = false,
+  disable_count    = 0,
+  work_count       = 0,
+  curr_active_type = "work", -- {"work", "rest"}
+  time_left        = pom.config.work_period_sec,
+  max_time_sec     = pom.config.work_period_sec
+}
+
+-- update display
+local function pom_update_display()
+  local time_min = math.floor( (pom.var.time_left / 60))
+  local time_sec = pom.var.time_left - (time_min * 60)
+  local str = string.format ("[%s|%02d:%02d|#%02d]", pom.var.curr_active_type, time_min, time_sec, pom.var.work_count)
+  pom_menu:setTitle(str)
+end
+
+--------------------------------------------------------------------------------
+-- Color bar for pomodoor
+--------------------------------------------------------------------------------
+
 function pom_del_indicators()
-  mod.config.c_left:delete()
-  mod.config.c_used:delete()
+  pom.bar.c_left:delete()
+  pom.bar.c_used:delete()
 end
 
 function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
@@ -44,36 +54,36 @@ function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
   local screen_frame_height      = screen:frame().y
   local screen_full_frame_height = screeng.y
   local height_delta             = screen_frame_height - screen_full_frame_height
-  local height                   = mod.config.indicator_height * (height_delta)
+  local height                   = pom.bar.indicator_height * (height_delta)
 
   target_draw:setSize(hs.geometry.rect(screeng.x + offset, screen_full_frame_height, width, height))
   target_draw:setTopLeft(hs.geometry.point(screeng.x + offset, screen_full_frame_height))
   target_draw:setFillColor(fill_color)
   target_draw:setFill(true)
-  target_draw:setAlpha(mod.config.indicator_alpha)
+  target_draw:setAlpha(pom.bar.indicator_alpha)
   target_draw:setLevel(hs.drawing.windowLevels.overlay)
   target_draw:setStroke(false)
-  if mod.config.indicator_in_all_spaces then
+  if pom.bar.indicator_in_all_spaces then
     target_draw:setBehavior(hs.drawing.windowBehaviors.canJoinAllSpaces)
   end
   target_draw:show()
 end
 
 function pom_draw_indicator(time_left, max_time)
-  if mod.config.all_screens then
+  if pom.bar.all_screens then
     screens = hs.screen.allScreens()
   else
     screens = { hs.screen.mainScreen() }
   end
   for i,screen in ipairs(screens) do
-    screen = hs.screen.mainScreen()
+    screen           = hs.screen.mainScreen()
     local screeng    = screen:fullFrame()
     local time_ratio = time_left / max_time
     local width      = math.ceil(screeng.w * time_ratio)
     local left_width = screeng.w - width
 
-    pom_draw_on_menu(mod.config.c_left, screen, left_width, width,      mod.config.color_time_remaining)
-    pom_draw_on_menu(mod.config.c_used, screen, 0,          left_width, mod.config.color_time_used)  
+    pom_draw_on_menu(pom.bar.c_left, screen, left_width, width,      pom.bar.color_time_remaining)
+    pom_draw_on_menu(pom.bar.c_used, screen, 0,          left_width, pom.bar.color_time_used)  
   end 
 end
 --------------------------------------------------------------------------------
@@ -85,20 +95,20 @@ end
 -- * Disabling trice will shut down and hide the pomodoro timer
 function pom_disable()
   
-  local pom_was_active = pom_is_active
-  pom_is_active = false
+  local pom_was_active = pom.var.is_active
+  pom.var.is_active = false
 
-  if (pom_disable_count == 0) then
+  if (pom.var.disable_count == 0) then
      if (pom_was_active) then
       pom_timer:stop()
     end
-  elseif (pom_disable_count == 1) then
-    pom_time_left         = pom_work_period_sec
-    pom_curr_active_type  = "work"
+  elseif (pom.var.disable_count == 1) then
+    pom.var.time_left         = pom.config.work_period_sec
+    pom.var.gcurr_active_type  = "work"
     pom_update_display()
-  elseif (pom_disable_count >= 2) then
+  elseif (pom.var.disable_count >= 2) then
     if pom_menu == nil then 
-      pom_disable_count = 2
+      pom.var.disable_count = 2
       return
     end
     pom_menu:delete()
@@ -108,36 +118,36 @@ function pom_disable()
     pom_del_indicators()
   end
 
-  pom_disable_count = pom_disable_count + 1
+  pom.var.disable_count = pom.var.disable_count + 1
  
 end
 
 -- update pomodoro timer
 local function pom_update_time()
-  if pom_is_active == false then
+  if pom.var.is_active == false then
     return
   else
-    pom_time_left = pom_time_left - 1
+    pom.var.time_left = pom.var.time_left - 1
 
-    if (pom_time_left <= 0 ) then
+    if (pom.var.time_left <= 0 ) then
       pom_disable()
       if pom_curr_active_type == "work" then 
         hs.alert.show("Work Complete!", 2)
-        pom_work_count        =  pom_work_count + 1 
-        pom_curr_active_type  = "rest"
-        pom_time_left         = pom_rest_period_sec
-        pom_max_time_sec      = pom_rest_period_sec
+        pom.var.work_count        =  pom.var.work_count + 1 
+        pom.var.curr_active_type  = "rest"
+        pom.var.time_left         = pom.config.rest_period_sec
+        pom.var.max_time_sec      = pom.config.rest_period_sec
       else 
           hs.alert.show("Done resting",2)
-          pom_curr_active_type  = "work"
-          pom_time_left         = pom_work_period_sec
-          pom_max_time_sec      = pom_work_period_sec 
+          pom.var.curr_active_type  = "work"
+          pom.var.time_left         = pom.config.work_period_sec
+          pom.var._max_time_sec     = pom.config.work_period_sec 
       end
     end
 
     -- draw color bar indicator, if enabled.
-    if (pom_enable_color_bar == 1) then
-      pom_draw_indicator(pom_time_left, pom_max_time_sec)
+    if (pom.config.enable_color_bar == true) then
+      pom_draw_indicator(pom.var.time_left, pom.var.max_time_sec)
     end
 
   end
@@ -157,7 +167,7 @@ end
 
 -- start the pomodoro timer
 function pom_enable()
-  pom_disable_count = 0;
+  pom.var.disable_count = 0;
   if (pom_is_active) then
     return
   elseif pom_timer == nil then
@@ -166,14 +176,14 @@ function pom_enable()
     pom_timer = hs.timer.new(1, pom_update_menu)
   end
 
-  pom_is_active = true
+  pom.var.is_active = true
   pom_timer:start()
 end
 
 -- reset work count
 -- TODO - reset automatically every day
 function pom_reset_work()
-  pom_work_count = 0;
+  pom.var.work_count = 0;
 end
 -- Use examples:
 
