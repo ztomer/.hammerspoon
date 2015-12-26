@@ -32,14 +32,6 @@ pom.var = {
   max_time_sec     = pom.config.work_period_sec
 }
 
--- update display
-local function pom_update_display()
-  local time_min = math.floor( (pom.var.time_left / 60))
-  local time_sec = pom.var.time_left - (time_min * 60)
-  local str = string.format ("[%s|%02d:%02d|#%02d]", pom.var.curr_active_type, time_min, time_sec, pom.var.work_count)
-  pom_menu:setTitle(str)
-end
-
 --------------------------------------------------------------------------------
 -- Color bar for pomodoor
 --------------------------------------------------------------------------------
@@ -88,6 +80,14 @@ function pom_draw_indicator(time_left, max_time)
 end
 --------------------------------------------------------------------------------
 
+-- update display
+local function pom_update_display()
+  local time_min = math.floor( (pom.var.time_left / 60))
+  local time_sec = pom.var.time_left - (time_min * 60)
+  local str = string.format ("[%s|%02d:%02d|#%02d]", pom.var.curr_active_type, time_min, time_sec, pom.var.work_count)
+  pom_menu:setTitle(str)
+end
+
 -- stop the clock
 -- Stateful:
 -- * Disabling once will pause the countdown
@@ -111,6 +111,7 @@ function pom_disable()
       pom.var.disable_count = 2
       return
     end
+
     pom_menu:delete()
     pom_menu = nil
     pom_timer:stop()
@@ -119,7 +120,7 @@ function pom_disable()
   end
 
   pom.var.disable_count = pom.var.disable_count + 1
- 
+
 end
 
 -- update pomodoro timer
@@ -138,7 +139,7 @@ local function pom_update_time()
         pom.var.time_left         = pom.config.rest_period_sec
         pom.var.max_time_sec      = pom.config.rest_period_sec
       else 
-          hs.alert.show("Done resting",2)
+          hs.alert.show("Done resting", 2)
           pom.var.curr_active_type  = "work"
           pom.var.time_left         = pom.config.work_period_sec
           pom.var._max_time_sec     = pom.config.work_period_sec 
