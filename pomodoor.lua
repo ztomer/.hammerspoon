@@ -5,7 +5,6 @@
 --------------------------------------------------------------------------------
 local pom={}
 pom.bar = {
-  all_screens      = true,
   indicator_height = 0.2, -- ratio from the height of the menubar (0..1)
   indicator_alpha  = 0.3,
   indicator_in_all_spaces = true,
@@ -61,22 +60,16 @@ function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
   target_draw:show()
 end
 
-function pom_draw_indicator(time_left, max_time)
-  if pom.bar.all_screens then
-    screens = hs.screen.allScreens()
-  else
-    screens = { hs.screen.mainScreen() }
-  end
-  for i,screen in ipairs(screens) do
-    screen           = hs.screen.mainScreen()
-    local screeng    = screen:fullFrame()
-    local time_ratio = time_left / max_time
-    local width      = math.ceil(screeng.w * time_ratio)
-    local left_width = screeng.w - width
+function pom_draw_indicator(time_left, max_time)  
+  local main_screen = hs.screen.mainScreen()
+  local screeng     = main_screen:fullFrame()
+  local time_ratio  = time_left / max_time
+  local width       = math.ceil(screeng.w * time_ratio)
+  local left_width  = screeng.w - width
 
-    pom_draw_on_menu(pom.bar.c_left, screen, left_width, width,      pom.bar.color_time_remaining)
-    pom_draw_on_menu(pom.bar.c_used, screen, 0,          left_width, pom.bar.color_time_used)  
-  end 
+  pom_draw_on_menu(pom.bar.c_left, main_screen, left_width, width,      pom.bar.color_time_remaining)
+  pom_draw_on_menu(pom.bar.c_used, main_screen, 0,          left_width, pom.bar.color_time_used)  
+  
 end
 --------------------------------------------------------------------------------
 
