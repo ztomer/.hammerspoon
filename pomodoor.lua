@@ -97,7 +97,7 @@ function pom_disable()
     end
   elseif (pom.var.disable_count == 1) then
     pom.var.time_left         = pom.config.work_period_sec
-    pom.var.gcurr_active_type  = "work"
+    pom.var.curr_active_type  = "work"
     pom_update_display()
   elseif (pom.var.disable_count >= 2) then
     if pom_menu == nil then 
