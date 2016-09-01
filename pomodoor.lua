@@ -1,4 +1,4 @@
--- Pomodoro module
+e
 
 --------------------------------------------------------------------------------
 -- Configuration variables
@@ -10,7 +10,7 @@ pom.bar = {
   indicator_in_all_spaces = true,
   color_time_remaining = hs.drawing.color.green,
   color_time_used      = hs.drawing.color.red,
-  
+
   c_left = hs.drawing.rectangle(hs.geometry.rect(0,0,0,0)),
   c_used = hs.drawing.rectangle(hs.geometry.rect(0,0,0,0))
 }
@@ -19,10 +19,10 @@ pom.config = {
   enable_color_bar = true,
   work_period_sec  = 25 * 60,
   rest_period_sec  = 5 * 60,
-  
+
 }
 
-pom.var = { 
+pom.var = {
   is_active        = false,
   disable_count    = 0,
   work_count       = 0,
@@ -60,7 +60,7 @@ function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
   target_draw:show()
 end
 
-function pom_draw_indicator(time_left, max_time)  
+function pom_draw_indicator(time_left, max_time)
   local main_screen = hs.screen.mainScreen()
   local screeng     = main_screen:fullFrame()
   local time_ratio  = time_left / max_time
@@ -68,8 +68,8 @@ function pom_draw_indicator(time_left, max_time)
   local left_width  = screeng.w - width
 
   pom_draw_on_menu(pom.bar.c_left, main_screen, left_width, width,      pom.bar.color_time_remaining)
-  pom_draw_on_menu(pom.bar.c_used, main_screen, 0,          left_width, pom.bar.color_time_used)  
-  
+  pom_draw_on_menu(pom.bar.c_used, main_screen, 0,          left_width, pom.bar.color_time_used)
+
 end
 --------------------------------------------------------------------------------
 
@@ -87,7 +87,7 @@ end
 -- * Disabling twice will reset the countdown
 -- * Disabling trice will shut down and hide the pomodoro timer
 function pom_disable()
-  
+
   local pom_was_active = pom.var.is_active
   pom.var.is_active = false
 
@@ -100,7 +100,7 @@ function pom_disable()
     pom.var.curr_active_type  = "work"
     pom_update_display()
   elseif (pom.var.disable_count >= 2) then
-    if pom_menu == nil then 
+    if pom_menu == nil then
       pom.var.disable_count = 2
       return
     end
@@ -125,17 +125,17 @@ local function pom_update_time()
 
     if (pom.var.time_left <= 0 ) then
       pom_disable()
-      if pom_curr_active_type == "work" then 
+      if pom.var.curr_active_type == "work" then
         hs.alert.show("Work Complete!", 2)
-        pom.var.work_count        =  pom.var.work_count + 1 
+        pom.var.work_count        =  pom.var.work_count + 1
         pom.var.curr_active_type  = "rest"
         pom.var.time_left         = pom.config.rest_period_sec
         pom.var.max_time_sec      = pom.config.rest_period_sec
-      else 
+      else
           hs.alert.show("Done resting", 2)
           pom.var.curr_active_type  = "work"
           pom.var.time_left         = pom.config.work_period_sec
-          pom.var._max_time_sec     = pom.config.work_period_sec 
+          pom.var.max_time_sec     = pom.config.work_period_sec
       end
     end
 
@@ -156,19 +156,20 @@ end
 local function pom_create_menu(pom_origin)
   if pom_menu == nil then
     pom_menu = hs.menubar.new()
+    pom.bar.c_left = hs.drawing.rectangle(hs.geometry.rect(0,0,0,0))
+    pom.bar.c_used = hs.drawing.rectangle(hs.geometry.rect(0,0,0,0))
   end
 end
 
 -- start the pomodoro timer
 function pom_enable()
   pom.var.disable_count = 0;
-  if (pom_is_active) then
+  if (pom.var_is_active) then
     return
-  elseif pom_timer == nil then
-    pom_create_menu()
-    --pom_init_indicator()
-    pom_timer = hs.timer.new(1, pom_update_menu)
   end
+
+  pom_create_menu()
+  pom_timer = hs.timer.new(1, pom_update_menu)
 
   pom.var.is_active = true
   pom_timer:start()
