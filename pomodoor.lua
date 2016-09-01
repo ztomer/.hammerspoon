@@ -164,7 +164,7 @@ end
 -- start the pomodoro timer
 function pom_enable()
   pom.var.disable_count = 0;
-  if (pom.var_is_active) then
+  if (pom.var.is_active) then
     return
   end
 
