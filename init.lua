@@ -24,20 +24,45 @@ appCuts = {
   d = 'Dictionary',
   i = 'iterm',
   c = 'Google chrome',
-  t = 'Xccello',
+  t = 'Paws For Trello',
   -- 4 reserved for dash shortcut 
   q = 'steam',
   e = 'emacs',
   r = 'reeder',
   k = 'itunes',
-  z = 'Zim'
- -- k = 'Chicken'
+  z = 'Zim',
+  w = 'Whatsapp',
+  -- k = 'Chicken'
+  v = 'CalendarPro for Google',
+  g = 'WMail'
 }
 
 -- Launch applications
 for key, app in pairs(appCuts) do
   hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
 end
+
+-- Display Help
+local function display_help()
+  local t = {}
+  str = "Keyboard shortcuts\n"
+  table.insert(t, str)
+  str = "--------------------\n"
+  table.insert(t, str)
+  for key, app in pairs(appCuts) do
+    str = "^-Alt-Meta-"..key.." :"..app.."\n"
+    --hs.alert.show(str)
+    table.insert(t,str)
+  end
+  t = table.concat(t)
+  hs.alert.show(t, 2)
+end
+
+local function gr()
+  hs.alert.show("frrr", 2)
+end
+
+hs.hotkey.bind(mash_app, '/', function() display_help() end)
 
 -- global operations
 hs.hotkey.bind(mash, ';', function() hs.grid.snap(hs.window.focusedWindow()) end)
