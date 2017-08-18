@@ -46,7 +46,7 @@ local function display_help()
   str = "--------------------\n"
   table.insert(t, str)
   for key, app in pairs(appCuts) do
-    str = "^-Alt-Meta-"..key.." :"..app.."\n"
+    str = "^-Alt-Meta-"..key.."\t :\t"..app.."\n"
     --hs.alert.show(str)
     table.insert(t,str)
   end
