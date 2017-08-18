@@ -3,6 +3,8 @@
 require "pomodoor"
 --require "bar"
 
+require "homebrew"
+
 -- init grid
 hs.grid.MARGINX 	= 0
 hs.grid.MARGINY 	= 0
@@ -20,27 +22,21 @@ local mash_shift = {"ctrl", "alt", "shift"}
 local mash_test	 = {"cntrl", "shift"}	
 
 --------------------------------------------------------------------------------
-appCuts = {
+local appCuts = {
   d = 'Dictionary',
   i = 'iterm',
   c = 'Google chrome',
-  t = 'Paws For Trello',
+  t = 'Trello',
   -- 4 reserved for dash shortcut 
   q = 'steam',
   e = 'emacs',
   r = 'reeder',
   k = 'itunes',
-  z = 'Zim',
+  --z = 'Zim',
   w = 'Whatsapp',
   -- k = 'Chicken'
-  v = 'CalendarPro for Google',
-  g = 'WMail'
+  g = 'openWMail'
 }
-
--- Launch applications
-for key, app in pairs(appCuts) do
-  hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
-end
 
 -- Display Help
 local function display_help()
@@ -58,55 +54,6 @@ local function display_help()
   hs.alert.show(t, 2)
 end
 
-local function gr()
-  hs.alert.show("frrr", 2)
-end
-
-hs.hotkey.bind(mash_app, '/', function() display_help() end)
-
--- global operations
-hs.hotkey.bind(mash, ';', function() hs.grid.snap(hs.window.focusedWindow()) end)
-hs.hotkey.bind(mash, "'", function() hs.fnutils.map(hs.window.visibleWindows(), hs.grid.snap) end)
-
--- adjust grid size
-hs.hotkey.bind(mash, '=', function() hs.grid.adjustWidth( 1) end)
-hs.hotkey.bind(mash, '-', function() hs.grid.adjustWidth(-1) end)
-hs.hotkey.bind(mash, ']', function() hs.grid.adjustHeight( 1) end)
-hs.hotkey.bind(mash, '[', function() hs.grid.adjustHeight(-1) end)
-
--- change focus
-hs.hotkey.bind(mash_shift, 'H', function() hs.window.focusedWindow():focusWindowWest() end)
-hs.hotkey.bind(mash_shift, 'L', function() hs.window.focusedWindow():focusWindowEast() end)
-hs.hotkey.bind(mash_shift, 'K', function() hs.window.focusedWindow():focusWindowNorth() end)
-hs.hotkey.bind(mash_shift, 'J', function() hs.window.focusedWindow():focusWindowSouth() end)
-
-hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
-
--- multi monitor
-hs.hotkey.bind(mash, 'N', hs.grid.pushWindowNextScreen)
-hs.hotkey.bind(mash, 'P', hs.grid.pushWindowPrevScreen)
-
--- move windows
-hs.hotkey.bind(mash, 'H', hs.grid.pushWindowLeft)
-hs.hotkey.bind(mash, 'J', hs.grid.pushWindowDown)
-hs.hotkey.bind(mash, 'K', hs.grid.pushWindowUp)
-hs.hotkey.bind(mash, 'L', hs.grid.pushWindowRight)
-
--- resize windows
-hs.hotkey.bind(mash, 'Y', hs.grid.resizeWindowThinner)
-hs.hotkey.bind(mash, 'U', hs.grid.resizeWindowShorter)
-hs.hotkey.bind(mash, 'I', hs.grid.resizeWindowTaller)
-hs.hotkey.bind(mash, 'O', hs.grid.resizeWindowWider)
-
--- Window Hints
--- hs.hotkey.bind(mash, '.', function() hs.hints.windowHints(hs.window.allWindows()) end)
-hs.hotkey.bind(mash, '.', hs.hints.windowHints)
-
--- pomodoro key binding
-hs.hotkey.bind(mash, '9', function() pom_enable() end)
-hs.hotkey.bind(mash, '0', function() pom_disable() end)
-hs.hotkey.bind(mash_shift, '0', function() pom_reset_work() end)
-
 -- snap all newly launched windows
 local function auto_tile(appName, event)
 	if event == hs.application.watcher.launched then
@@ -119,6 +66,69 @@ local function auto_tile(appName, event)
 	end
 end
 
--- start app launch watcher
-hs.application.watcher.new(auto_tile):start()
+local function init_wm_binding()
+	hs.hotkey.bind(mash_app, '/', function() display_help() end)
+
+	-- global operations
+	hs.hotkey.bind(mash, ';', function() hs.grid.snap(hs.window.focusedWindow()) end)
+	hs.hotkey.bind(mash, "'", function() hs.fnutils.map(hs.window.visibleWindows(), hs.grid.snap) end)
+
+	-- adjust grid size
+	hs.hotkey.bind(mash, '=', function() hs.grid.adjustWidth( 1) end)
+	hs.hotkey.bind(mash, '-', function() hs.grid.adjustWidth(-1) end)
+	hs.hotkey.bind(mash, ']', function() hs.grid.adjustHeight( 1) end)
+	hs.hotkey.bind(mash, '[', function() hs.grid.adjustHeight(-1) end)
+
+	-- change focus
+	hs.hotkey.bind(mash_shift, 'H', function() hs.window.focusedWindow():focusWindowWest() end)
+	hs.hotkey.bind(mash_shift, 'L', function() hs.window.focusedWindow():focusWindowEast() end)
+	hs.hotkey.bind(mash_shift, 'K', function() hs.window.focusedWindow():focusWindowNorth() end)
+	hs.hotkey.bind(mash_shift, 'J', function() hs.window.focusedWindow():focusWindowSouth() end)
+
+	hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
+
+	-- multi monitor
+	hs.hotkey.bind(mash, 'N', hs.grid.pushWindowNextScreen)
+	hs.hotkey.bind(mash, 'P', hs.grid.pushWindowPrevScreen)
+
+	-- move windows
+	hs.hotkey.bind(mash, 'H', hs.grid.pushWindowLeft)
+	hs.hotkey.bind(mash, 'J', hs.grid.pushWindowDown)
+	hs.hotkey.bind(mash, 'K', hs.grid.pushWindowUp)
+	hs.hotkey.bind(mash, 'L', hs.grid.pushWindowRight)
+
+	-- resize windows
+	hs.hotkey.bind(mash, 'Y', hs.grid.resizeWindowThinner)
+	hs.hotkey.bind(mash, 'U', hs.grid.resizeWindowShorter)
+	hs.hotkey.bind(mash, 'I', hs.grid.resizeWindowTaller)
+	hs.hotkey.bind(mash, 'O', hs.grid.resizeWindowWider)
+
+	-- Window Hints
+	-- hs.hotkey.bind(mash, '.', function() hs.hints.windowHints(hs.window.allWindows()) end)
+	hs.hotkey.bind(mash, '.', hs.hints.windowHints)
+
+	-- pomodoro key binding
+	hs.hotkey.bind(mash, '9', function() pom_enable() end)
+	hs.hotkey.bind(mash, '0', function() pom_disable() end)
+	hs.hotkey.bind(mash_shift, '0', function() pom_reset_work() end)
+end
+
+-- Init Launch applications bindings
+local function init_app_binding()
+	for key, app in pairs(appCuts) do
+	  hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
+	end
+end	
+
+local function init()
+	init_app_binding()
+	init_wm_binding()
+	-- start app launch watcher
+	hs.application.watcher.new(auto_tile):start()
+end
+
+init()
+
+
+
 

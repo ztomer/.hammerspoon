@@ -1,0 +1,54 @@
+
+bar.lua,54
+function updateiTunesBoxes()updateiTunesBoxes13,254
+
+hs/_asm/undocumented/spaces/init.lua,0
+
+init.lua,1426
+hs.hotkey.bind(mash, ';', function() hs.grid.snap(hs.window.focusedWindow()) end)) hs.grid.snap43,949
+hs.hotkey.bind(mash, "'", function() hs.fnutils.map(hs.window.visibleWindows(), hs.grid.snap) end)) hs.fnutils.map44,1031
+hs.hotkey.bind(mash, '=', function() hs.grid.adjustWidth( 1) end)hs.hotkey.bind(mash, '47,1151
+hs.hotkey.bind(mash, '-', function() hs.grid.adjustWidth(-1) end)) hs.grid.adjustWidth48,1217
+hs.hotkey.bind(mash, ']', function() hs.grid.adjustHeight( 1) end)) hs.grid.adjustHeight49,1283
+hs.hotkey.bind(mash, '[', function() hs.grid.adjustHeight(-1) end)) hs.grid.adjustHeight50,1350
+hs.hotkey.bind(mash_shift, 'H', function() hs.window.focusedWindow():focusWindowWest() end)) hs.window.focusedWindow53,1434
+hs.hotkey.bind(mash_shift, 'L', function() hs.window.focusedWindow():focusWindowEast() end)) hs.window.focusedWindow54,1526
+hs.hotkey.bind(mash_shift, 'K', function() hs.window.focusedWindow():focusWindowNorth() end)) hs.window.focusedWindow55,1618
+hs.hotkey.bind(mash_shift, 'J', function() hs.window.focusedWindow():focusWindowSouth() end)) hs.window.focusedWindow56,1711
+hs.hotkey.bind(mash, '9', function() pom_enable() end)) pom_enable81,2617
+hs.hotkey.bind(mash, '0', function() pom_disable() end)) pom_disable82,2672
+hs.hotkey.bind(mash_shift, '0', function() pom_reset_work() end)) pom_reset_work83,2728
+local function auto_tile(appName, event)auto_tile86,2829
+
+pomodoor.lua,616
+function pom_del_indicators()pom_del_indicators38,1122
+function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)pom_draw_on_menu43,1209
+function pom_draw_indicator(time_left, max_time)  pom_draw_indicator63,2134
+local function pom_update_display()pom_update_display77,2724
+function pom_disable()pom_disable89,3207
+local function pom_update_time()pom_update_time120,3895
+local function pom_update_menu()pom_update_menu151,4861
+local function pom_create_menu(pom_origin)pom_create_menu156,4942
+function pom_enable()pom_enable163,5082
+function pom_reset_work()pom_reset_work179,5418
+
+sessions-control/init_example.lua,0
+
+sessions-control/sessions_control.lua,94
+	hs.hotkey.bind(key_fn, tostring(i), function() sessionSwitch(i) end)) sessionSwitch52,1183
+
+sessions-control/sessions_head.lua,892
+function sessionsShow()sessionsShow43,665
+function sessionSwitch(new)sessionSwitch57,1089
+				hs.timer.doAfter(2, function() v[index_win]:minimize() end);) v[index_win]:minimize64,1401
+		if v[index_isFull] then hs.timer.doAfter(1, function() v[index_win]:setFullScreen(true) end) end) v[index_win]:setFullScreen75,1737
+function sessionsReload()sessionsReload85,2034
+function sessionsToConfig(se)sessionsToConfig113,2725
+function sessionsRead()sessionsRead133,3312
+function sessionsSave(se)sessionsSave200,5519
+function winDelFromSession(win, cur)winDelFromSession228,6416
+function winAddToSession(win, cur)winAddToSession241,6940
+function findWinIdInSession(list, item)findWinIdInSession265,7607
+function findNameInSessions(list, item)findNameInSessions276,7818
+function readUserSessions()readUserSessions292,8084
+function loadSystemCache()loadSystemCache299,8203
