@@ -135,7 +135,7 @@ local function pom_update_time()
           hs.alert.show("Done resting", 2)
           pom.var.curr_active_type  = "work"
           pom.var.time_left         = pom.config.work_period_sec
-          pom.var.max_time_sec     = pom.config.work_period_sec
+          pom.var.max_time_sec      = pom.config.work_period_sec
       end
     end
 

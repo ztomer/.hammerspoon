@@ -29,8 +29,8 @@ local appCuts = {
   t = 'Trello',
   -- 4 reserved for dash shortcut 
   q = 'steam',
-  e = 'emacs',
-  r = 'reeder',
+  e = 'sublime text',
+  r = 'cool-retro-term',
   k = 'itunes',
   --z = 'Zim',
   w = 'Whatsapp',
