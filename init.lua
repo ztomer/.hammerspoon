@@ -23,19 +23,21 @@ local mash_test	 = {"cntrl", "shift"}
 
 --------------------------------------------------------------------------------
 local appCuts = {
-  d = 'Dictionary',
+  d = 'Dash',
   i = 'iterm',
   c = 'Google chrome',
   t = 'Trello',
   -- 4 reserved for dash shortcut 
   q = 'steam',
   e = 'sublime text',
-  r = 'cool-retro-term',
+  r = 'Microsoft OneNote',
+  f = 'cool-retro-term',
   k = 'itunes',
   --z = 'Zim',
   w = 'Whatsapp',
   -- k = 'Chicken'
-  g = 'openWMail'
+  g = 'Station Canary',
+  s = 'spotify'
 }
 
 -- Display Help
@@ -64,6 +66,19 @@ local function auto_tile(appName, event)
 		end
 		hs.fnutils.map(app:allWindows(), hs.grid.snap)
 	end
+end
+
+-- Moves all windows outside the view into the curent view
+local function rescue_windows()
+    local screen = hs.screen.mainScreen()
+    local screenFrame = screen:fullFrame()
+    local wins = hs.window.visibleWindows()
+    for i,win in ipairs(wins) do
+        local frame = win:frame()
+        if not frame:inside(screenFrame) then
+            win:moveToScreen(screen, true, true)
+        end
+    end
 end
 
 local function init_wm_binding()
@@ -96,6 +111,7 @@ local function init_wm_binding()
 	hs.hotkey.bind(mash, 'J', hs.grid.pushWindowDown)
 	hs.hotkey.bind(mash, 'K', hs.grid.pushWindowUp)
 	hs.hotkey.bind(mash, 'L', hs.grid.pushWindowRight)
+	hs.hotkey.bind(mash, 'R', function() rescue_windows() end)
 
 	-- resize windows
 	hs.hotkey.bind(mash, 'Y', hs.grid.resizeWindowThinner)
@@ -121,10 +137,12 @@ local function init_app_binding()
 end	
 
 local function init()
+	-- Load Hammerspoon bits from https://github.com/jasonrudolph/ControlEscape.spoon
+	hs.loadSpoon('ControlEscape'):start() 
 	init_app_binding()
 	init_wm_binding()
 	-- start app launch watcher
-	hs.application.watcher.new(auto_tile):start()
+	-- hs.application.watcher.new(auto_tile):start()
 end
 
 init()
