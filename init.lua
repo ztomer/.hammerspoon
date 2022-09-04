@@ -130,7 +130,10 @@ local function init_app_binding()
 	end
 end
 
-	init_wm_binding()˘˘
+
+local function init()
+	init_app_binding()
+	init_wm_binding()
 	-- start app launch watcher
 	-- hs.application.watcher.new(auto_tile):start()
 end
