@@ -17,26 +17,20 @@ hs.window.animationDuration = 0
 
 -- hotkey mash
 local mash       = {"ctrl", "alt"}
-local mash_app 	 = {"cmd", "alt", "ctrl"}
+-- local mash_app 	 = {"cmd", "alt", "ctrl"}
+mash_app = {"shift", "ctrl"}
 local mash_shift = {"ctrl", "alt", "shift"}
-local mash_test	 = {"cntrl", "shift"}	
+local mash_test	 = {"cntrl", "shift"}
 
 --------------------------------------------------------------------------------
 local appCuts = {
-  d = 'Dash',
+  d = 'Cron',
   i = 'iterm',
-  c = 'Google chrome',
-  t = 'Trello',
-  -- 4 reserved for dash shortcut 
-  q = 'steam',
-  e = 'sublime text',
-  r = 'Microsoft OneNote',
-  f = 'cool-retro-term',
-  k = 'itunes',
-  --z = 'Zim',
+  c = 'Google Chrome',
+  a = 'Notion',
+  -- 4 reserved for dash shortcut
   w = 'Whatsapp',
-  -- k = 'Chicken'
-  g = 'Station Canary',
+  v = 'Visual Studio Code',
   s = 'spotify'
 }
 
@@ -134,13 +128,9 @@ local function init_app_binding()
 	for key, app in pairs(appCuts) do
 	  hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
 	end
-end	
+end
 
-local function init()
-	-- Load Hammerspoon bits from https://github.com/jasonrudolph/ControlEscape.spoon
-	hs.loadSpoon('ControlEscape'):start() 
-	init_app_binding()
-	init_wm_binding()
+	init_wm_binding()˘˘
 	-- start app launch watcher
 	-- hs.application.watcher.new(auto_tile):start()
 end
