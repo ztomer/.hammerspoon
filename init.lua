@@ -16,22 +16,23 @@ hs.window.animationDuration = 0
 --hs.hints.style = "vimperator"
 
 -- hotkey mash
-local mash       = {"ctrl", "alt"}
+local mash       = {"ctrl", "cmd"}
 -- local mash_app 	 = {"cmd", "alt", "ctrl"}
-mash_app = {"shift", "ctrl"}
-local mash_shift = {"ctrl", "alt", "shift"}
-local mash_test	 = {"cntrl", "shift"}
+local mash_app = {"shift", "ctrl"}
+local mash_shift = {"shift", "ctrl", "cmd"}
+local mash_test	 = {"ctrl", "shift"}
 
 --------------------------------------------------------------------------------
 local appCuts = {
   d = 'Cron',
-  i = 'iterm',
+  t = 'iterm',
   c = 'Google Chrome',
   a = 'Notion',
+  f = 'Firefox',
   -- 4 reserved for dash shortcut
   w = 'Whatsapp',
   v = 'Visual Studio Code',
-  s = 'spotify'
+  s = 'Spotify'
 }
 
 -- Display Help
@@ -132,8 +133,8 @@ end
 
 
 local function init()
-	init_app_binding()
 	init_wm_binding()
+	init_app_binding()
 	-- start app launch watcher
 	-- hs.application.watcher.new(auto_tile):start()
 end
