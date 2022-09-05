@@ -29,7 +29,6 @@ local appCuts = {
   c = 'Google Chrome',
   a = 'Notion',
   f = 'Firefox',
-  -- 4 reserved for dash shortcut
   w = 'Whatsapp',
   v = 'Visual Studio Code',
   s = 'Spotify'
