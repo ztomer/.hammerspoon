@@ -123,15 +123,39 @@ local function init_wm_binding()
 	hs.hotkey.bind(mash_shift, '0', function() pom_reset_work() end)
 end
 
+local function toggle_app(app)
+	-- Minimize the window if the focused window is the same as the launched window
+	-- This is done to easliy pop and hide an application
+
+	-- If the focused app is the one with assigned shortcut, hide it
+	local front_app = hs.application.frontmostApplication()
+	local app_name = app:lower()
+	if app ~= nil then
+		local title = front_app:name():lower()
+
+		if title ~= nil then
+			-- Check both ways, the naming convenstions of the title are not consistent
+			if string.find(title, app_name) or string.find(app_name, title) then
+				front_app:hide()
+				return
+			end
+		end
+	end
+
+	hs.application.launchOrFocus(app)
+
+end
+
 -- Init Launch applications bindings
 local function init_app_binding()
 	for key, app in pairs(appCuts) do
-	  hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
+	  --hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
+	  hs.hotkey.bind(mash_app, key, function () toggle_app(app) end)
 	end
 end
 
 local function init_custom_binding()
-	hs.hotkey.bind("ctrl", "ESCAPE", function () hs.application.launchOrFocus("Activity Monitor") end)
+	hs.hotkey.bind("ctrl", "ESCAPE", function () toggle_app("Activity Monitor") end)
 end
 
 
