@@ -130,10 +130,15 @@ local function init_app_binding()
 	end
 end
 
+local function init_custom_binding()
+	hs.hotkey.bind("ctrl", "ESCAPE", function () hs.application.launchOrFocus("Activity Monitor") end)
+end
+
 
 local function init()
 	init_wm_binding()
 	init_app_binding()
+	init_custom_binding()
 	-- start app launch watcher
 	-- hs.application.watcher.new(auto_tile):start()
 end
