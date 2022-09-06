@@ -134,7 +134,7 @@ local function toggle_app(app)
 		local title = front_app:name():lower()
 
 		if title ~= nil then
-			-- Check both ways, the naming convenstions of the title are not consistent
+			-- Check both ways, the naming conventions of the title are not consistent
 			if string.find(title, app_name) or string.find(app_name, title) then
 				front_app:hide()
 				return
