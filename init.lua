@@ -1,8 +1,6 @@
 -- Hammerspoon configuration, heavily influenced by sdegutis default configuration
 
 require "pomodoor"
---require "bar"
-
 require "homebrew"
 
 -- init grid
@@ -41,8 +39,9 @@ local function display_help()
   table.insert(t, str)
   str = "--------------------\n"
   table.insert(t, str)
+
   for key, app in pairs(appCuts) do
-    str = "^-Alt-Meta-"..key.."\t :\t"..app.."\n"
+    str = "Control + CMD + "..key.."\t :\t"..app.."\n"
     --hs.alert.show(str)
     table.insert(t,str)
   end
