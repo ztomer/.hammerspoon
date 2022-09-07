@@ -4,49 +4,48 @@ require "pomodoor"
 require "homebrew"
 
 -- init grid
-hs.grid.MARGINX 	= 0
-hs.grid.MARGINY 	= 0
-hs.grid.GRIDWIDTH 	= 7
-hs.grid.GRIDHEIGHT 	= 3
+hs.grid.MARGINX    = 0
+hs.grid.MARGINY    = 0
+hs.grid.GRIDWIDTH  = 7
+hs.grid.GRIDHEIGHT = 3
 
 -- disable animation
 hs.window.animationDuration = 0
 --hs.hints.style = "vimperator"
 
 -- hotkey mash
-local mash       = {"ctrl", "cmd"}
+local mash       = { "ctrl", "cmd" }
 -- local mash_app 	 = {"cmd", "alt", "ctrl"}
-local mash_app = {"shift", "ctrl"}
-local mash_shift = {"shift", "ctrl", "cmd"}
-local mash_test	 = {"ctrl", "shift"}
+local mash_app   = { "shift", "ctrl" }
+local mash_shift = { "shift", "ctrl", "cmd" }
+local mash_test  = { "ctrl", "shift" }
 
 --------------------------------------------------------------------------------
 local appCuts = {
-  d = 'Cron',
-  t = 'iterm',
-  c = 'Google Chrome',
-  a = 'Notion',
-  f = 'Firefox',
-  w = 'Whatsapp',
-  v = 'Visual Studio Code',
-  s = 'Spotify'
+	d = 'Cron',
+	t = 'iterm',
+	c = 'Google Chrome',
+	a = 'Notion',
+	f = 'Firefox',
+	w = 'Whatsapp',
+	v = 'Visual Studio Code',
+	s = 'Spotify'
 }
 
 -- Display Help
 local function display_help()
-  local t = {}
-  str = "Keyboard shortcuts\n"
-  table.insert(t, str)
-  str = "--------------------\n"
-  table.insert(t, str)
+	local t = {}
+	table.insert(t, "Keyboard shortcuts\n")
+	table.insert(t, "--------------------\n")
 
-  for key, app in pairs(appCuts) do
-    str = "Control + CMD + "..key.."\t :\t"..app.."\n"
-    --hs.alert.show(str)
-    table.insert(t,str)
-  end
-  t = table.concat(t)
-  hs.alert.show(t, 2)
+	for key, app in pairs(appCuts) do
+		local str = "Control + CMD + " .. key .. "\t :\t" .. app .. "\n"
+		--hs.alert.show(str)
+		table.insert(t, str)
+	end
+	local concat_t = table.concat(t)
+	hs.alert.show(concat_t, 2)
+
 end
 
 -- snap all newly launched windows
@@ -63,15 +62,15 @@ end
 
 -- Moves all windows outside the view into the curent view
 local function rescue_windows()
-    local screen = hs.screen.mainScreen()
-    local screenFrame = screen:fullFrame()
-    local wins = hs.window.visibleWindows()
-    for i,win in ipairs(wins) do
-        local frame = win:frame()
-        if not frame:inside(screenFrame) then
-            win:moveToScreen(screen, true, true)
-        end
-    end
+	local screen = hs.screen.mainScreen()
+	local screenFrame = screen:fullFrame()
+	local wins = hs.window.visibleWindows()
+	for i, win in ipairs(wins) do
+		local frame = win:frame()
+		if not frame:inside(screenFrame) then
+			win:moveToScreen(screen, true, true)
+		end
+	end
 end
 
 local function init_wm_binding()
@@ -82,9 +81,9 @@ local function init_wm_binding()
 	hs.hotkey.bind(mash, "'", function() hs.fnutils.map(hs.window.visibleWindows(), hs.grid.snap) end)
 
 	-- adjust grid size
-	hs.hotkey.bind(mash, '=', function() hs.grid.adjustWidth( 1) end)
+	hs.hotkey.bind(mash, '=', function() hs.grid.adjustWidth(1) end)
 	hs.hotkey.bind(mash, '-', function() hs.grid.adjustWidth(-1) end)
-	hs.hotkey.bind(mash, ']', function() hs.grid.adjustHeight( 1) end)
+	hs.hotkey.bind(mash, ']', function() hs.grid.adjustHeight(1) end)
 	hs.hotkey.bind(mash, '[', function() hs.grid.adjustHeight(-1) end)
 
 	-- change focus
@@ -148,15 +147,14 @@ end
 -- Init Launch applications bindings
 local function init_app_binding()
 	for key, app in pairs(appCuts) do
-	  --hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
-	  hs.hotkey.bind(mash_app, key, function () toggle_app(app) end)
+		--hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
+		hs.hotkey.bind(mash_app, key, function() toggle_app(app) end)
 	end
 end
 
 local function init_custom_binding()
-	hs.hotkey.bind("ctrl", "ESCAPE", function () toggle_app("Activity Monitor") end)
+	hs.hotkey.bind("ctrl", "ESCAPE", function() toggle_app("Activity Monitor") end)
 end
-
 
 local function init()
 	init_wm_binding()
@@ -167,7 +165,3 @@ local function init()
 end
 
 init()
-
-
-
-
