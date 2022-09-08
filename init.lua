@@ -29,7 +29,8 @@ local appCuts = {
 	f = 'Firefox',
 	w = 'Whatsapp',
 	v = 'Visual Studio Code',
-	s = 'Spotify'
+	s = 'Spotify',
+	g = 'Gmail'
 }
 
 -- Display Help

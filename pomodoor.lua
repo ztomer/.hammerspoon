@@ -35,12 +35,12 @@ pom.var = {
 -- Color bar for pomodoor
 --------------------------------------------------------------------------------
 
-function pom_del_indicators()
+local function pom_del_indicators()
   pom.bar.c_left:delete()
   pom.bar.c_used:delete()
 end
 
-function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
+local function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
   local screeng                  = screen:fullFrame()
   local screen_frame_height      = screen:frame().y
   local screen_full_frame_height = screeng.y
@@ -60,7 +60,7 @@ function pom_draw_on_menu(target_draw, screen, offset, width, fill_color)
   target_draw:show()
 end
 
-function pom_draw_indicator(time_left, max_time)
+local function pom_draw_indicator(time_left, max_time)
   local main_screen = hs.screen.mainScreen()
   local screeng     = main_screen:fullFrame()
   local time_ratio  = time_left / max_time
