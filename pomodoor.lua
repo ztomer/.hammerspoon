@@ -17,8 +17,9 @@ pom.bar = {
 
 pom.config = {
   enable_color_bar = true,
-  work_period_sec  = 25 * 60,
-  rest_period_sec  = 5 * 60,
+  -- Using random productivity blog numbers, because why not
+  work_period_sec  = 52 * 60,
+  rest_period_sec  = 17 * 60,
 
 }
 
