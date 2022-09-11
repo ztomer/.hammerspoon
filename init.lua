@@ -30,7 +30,8 @@ local appCuts = {
     v = 'Visual Studio Code',
     s = 'Spotify',
     g = 'Gmail',
-    z = 'Double Commander'
+    z = 'Double Commander',
+    q = 'Twitter'
 }
 
 -- Display Help
