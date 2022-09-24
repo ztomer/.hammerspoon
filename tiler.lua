@@ -27,6 +27,8 @@ function Area:new(topleft_x, topleft_y, width, height)
 end
 
 Tile = {
+    -- A tile can contain multiple areas, which defines the possible windows sizes
+    -- for this tile
     _id = nil, -- unique identifer for the tile
     _hotkey = nil, -- hotkey to activate this tile
     _areas = {}, -- possible areas attached to the tile
@@ -34,6 +36,10 @@ Tile = {
     _windows_area = {} -- map between window and active area
 
 }
+
+-- Map between Window and area
+
+-- map between area and window
 
 function Tile:new(id, hotkey)
     self.id = id
@@ -72,9 +78,21 @@ end
 -- TODO: Move windows
 -- TODO: map active windows to areas
 
--- Good reference
--- https://github.com/wangshub/hammerspoon-config/blob/master/window/window.lua
--- hw.window:setFrameInScreenBounds
--- hs.window:setSize(size)
--- hs.window:setTopLeft(point)
+function on_hot_key_activation()
+    -- Also move window
+    -- Get focused window id
 
+    -- Get Tile, get area (can be empty)
+
+    -- Get target Tile bound to the hotkey,
+    -- If the target tile is the same as the one in the map,
+    -- cycle between areas and move the window to the next area
+
+    -- If the target tile and the current tile are not the same,
+    -- remove the window id from the current Tile, add to the target tile,
+    -- set the area inde to 0 and move the window to the area coordinates
+
+    -- hw.window:setFrameInScreenBounds
+    -- hs.window:setSize(size)
+    -- hs.window:setTopLeft(point)
+end
