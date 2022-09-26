@@ -132,7 +132,7 @@ function activate_move_tile(tile_id)
         tile.add_window(win_id)
     else
         -- Multiple calls to the same window on the same tile, rotate between areas
-        tile.area_roate(win_id)
+        tile.area_rotate(win_id)
     end
     tile.resize_window(win_id)
 
@@ -140,6 +140,7 @@ end
 
 function activate_window_closed()
     -- TODO: remove a window ID when an application is terminated or a window is closed
+    -- Ignoring for now, adding huge amount of watchers is not feasible, and at worse the cache will be a less than 100Kb
 end
 
 function activate_window_display_moved()
@@ -147,7 +148,86 @@ function activate_window_display_moved()
 end
 
 function tiler_init()
-    -- Create tiles supersets (1, 2, 3 areas)
+    -- Create tiles supersets (1, 2, 3 areas) (modes)
+    -- TODO (let's start with size three)
+
+    -- Size 3 superset - right cluster
+    -- Note this should be one per screen, so bad implementation
+    -- Overall layout:
+
+    -- [Y--|U-----|I--]
+    -- [H--|J-----|K--]
+    -- [N--|M-----|,--]
+
+    -- TODO: Should be done per screen
+    local main_screen = hs.screen.mainScreen()
+    local main_screen_name = main_screen.name()
+    print("screen name:", main_screen_name) -- DEBUG
+
+    local display_rect = main_screen:frame()
+    local w = display_rect.w
+    local h = display_rect.h
+    local x = display_rect.x
+    local y = display_rect.y
+
+    -- Y width is the first quarter, heights are half, third, two thirds
+    local quarter_screen = w // 4
+    local half_screen = w // 2
+    local half_height = h // 2
+    local two_third_height = (h * 2) // 3
+    local third_height = h // 3
+    local y_tile = Tile:new("Y", {"ctrl", "cmd", "y"})
+    y_tile.area_add(x, y, quarter_screen, half_height) -- Top half
+    y_tile.area_add(x, y, quarter_screen, two_third_height) -- Top 2/3
+    y_tile.area_add(x, y, quarter_screen, third_height) -- Top third
+
+    local h_tile = Tile:new("H", {"ctrl", "cmd", "u"})
+    h_tile.area_add(x, y, quarter_screen, h) -- full left third
+    h_tile.area_add(x, y + third_height + 1, quarter_screen, third_height)
+
+    local n_tile = Tile:new("N", {"ctrl", "cmd", "i"})
+    n_tile.area_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
+    n_tile.area_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
+    n_tile.area_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
+
+    -- Middle set, half of the screen
+    x = quarter_screen + 1
+    w = half_screen
+    local u_tile = Tile:new("U", {"ctrl", "cmd", "h"})
+    u_tile.area_add(x, y, half_screen, half_height) -- middle half
+    u_tile.area_add(x, y, half_screen, two_third_height) -- Top 2/3
+    u_tile.area_add(x, y, half_screen, third_height)
+
+    local j_tile = Tile:new("J", {"ctrl", "cmd", "j"})
+    j_tile.area_add(x, y, half_screen, h) -- Full middle
+    j_tile.area_add(x, y + third_height + 1, third_height)
+    local m_tile = Tile:new("M", {"ctrl", "cmd", "k"})
+    n_tile.area_add(x, y + half_height + 1, half_screen, half_height) -- Bottom half
+    n_tile.area_add(x, y + third_height + 1, half_screen, two_third_height) -- Bottom 2/3
+    n_tile.area_add(x, y + two_third_height + 1, half_screen, third_height) -- Bottom third
+
+    -- Move to last quarter
+    w = x + w + 1
+    w = quarter_screen
+
+    local i_tile = Tile:new("I", {"ctrl", "cmd", "n"})
+    i_tile.area_add(x, y, quarter_screen, half_height) -- Top half
+    i_tile.area_add(x, y, quarter_screen, two_third_height) -- Top 2/3
+    i_tile.area_add(x, y, quarter_screen, third_height) -- Top third
+
+    local k_tile = Tile:new("K", {"ctrl", "cmd", "m"})
+    k_tile.area_add(x, y, quarter_screen, h) -- full left third
+    k_tile.area_add(x, y + third_height + 1, quarter_screen, third_height)
+
+    local m1_tile = Tile:new("M1", {"ctrl", "cmd", ","})
+    m1_tile.area_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
+    m1_tile.area_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
+    m1_tile.area_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
+
+    mode_3 = {y_tile, u_tile, i_tile, --
+    h_tile, j_tile, k_tile, --
+    n_tile, m_tile, m1_tile --
+    }
 
     -- Add areas to tiles
 
