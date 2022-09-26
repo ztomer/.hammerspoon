@@ -21,17 +21,24 @@ local mash_test = {"ctrl", "shift"}
 
 --------------------------------------------------------------------------------
 local appCuts = {
-    d = 'Cron',
-    t = 'iterm',
-    c = 'Google Chrome',
-    a = 'Notion',
-    f = 'Firefox',
+    q = 'Twitter',
     w = 'Whatsapp',
-    v = 'Visual Studio Code',
+    -- E
+    r = 'Cronometer',
+    t = 'iterm',
+
+    a = 'Notion',
     s = 'Spotify',
+    d = 'Cron',
+    f = 'Firefox',
     g = 'Gmail',
+
     z = 'Double Commander',
-    q = 'Twitter'
+    -- X
+    c = 'Google Chrome',
+    v = 'Visual Studio Code'
+    -- B
+
 }
 
 -- Display Help
