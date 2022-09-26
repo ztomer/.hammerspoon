@@ -23,7 +23,7 @@ local mash_test = {"ctrl", "shift"}
 local appCuts = {
     q = 'Twitter',
     w = 'Whatsapp',
-    -- E
+    e = 'Finder',
     r = 'Cronometer',
     t = 'iterm',
 
