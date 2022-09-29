@@ -12,7 +12,28 @@ require "homebrew"
 
 -- Tile Objects, allows cycling between multiple area of different sizes
 
+-- References:
+-- https://github.com/szymonkaliski/hhtwm/blob/master/hhtwm/init.lua
+-- https://github.com/miromannino/miro-windows-manager/blob/master/MiroWindowsManager.spoon/init.lua
+-- https://github.com/mogenson/PaperWM.spoon
+-- https://thume.ca/2016/07/16/advanced-hackery-with-the-hammerspoon-window-manager/
+-- https://livingissodear.com/posts/using-hammerspoon-for-window-management/
+-- https://github.com/peterklijn/hammerspoon-shiftit (++)
+-- https://github.com/ashfinal/awesome-hammerspoon/blob/master/Spoons/WinWin.spoon/init.lua (GC--)
+
+-- https://github.com/AdamWagner/stackline (Good chache handling)
+---- https://github.com/AdamWagner/stackline/blob/main/stackline/stackline.lua
+-- https://github.com/jpf/Zoom.spoon/blob/main/init.lua (zoom plugin)
+-- https://github.com/szymonkaliski/hhtwm
+-- https://www.hammerspoon.org/Spoons/ArrangeDesktop.html
+-- https://www.hammerspoon.org/Spoons/RoundedCorners.html
+-- https://www.hammerspoon.org/Spoons/WindowSigils.html
+-- https://github.com/dmgerman/dmg-hammerspoon/blob/f8da75d121c37df40c0971336eb3f67c73d67187/dmg.spoon/init.lua#L115-L224
+--- Callbacks (cool trick - store the id of the current window in a global, if destroyed or closed, remove the global
+-- value from the cache and update the currently focused winid to be the global)
+-- https://github.com/mobily/awesome-keys
 -- local namespace
+
 local Tiler = {
     window2tile = {}, -- Maps window to tile_id and area_id
     tile_id2tile = {} -- Maps tile_id to tile object
@@ -147,24 +168,16 @@ function activate_window_display_moved()
     -- TODO: update the window caches when moving between hs.midi:displayName()
 end
 
-function tiler_init()
-    -- Create tiles supersets (1, 2, 3 areas) (modes)
-    -- TODO (let's start with size three)
-
+local function init_mode_3(screen)
     -- Size 3 superset - right cluster
     -- Note this should be one per screen, so bad implementation
     -- Overall layout:
-
     -- [Y--|U-----|I--]
     -- [H--|J-----|K--]
     -- [N--|M-----|,--]
-
     -- TODO: Should be done per screen
-    local main_screen = hs.screen.mainScreen()
-    local main_screen_name = main_screen.name()
-    print("screen name:", main_screen_name) -- DEBUG
 
-    local display_rect = main_screen:frame()
+    local display_rect = screen:frame()
     local w = display_rect.w
     local h = display_rect.h
     local x = display_rect.x
@@ -224,11 +237,22 @@ function tiler_init()
     m1_tile.area_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
     m1_tile.area_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
 
-    mode_3 = {y_tile, u_tile, i_tile, --
+    local mode_3 = {y_tile, u_tile, i_tile, --
     h_tile, j_tile, k_tile, --
     n_tile, m_tile, m1_tile --
     }
 
+    return mode_3
+end
+
+function tiler_init()
+    -- Create tiles supersets (1, 2, 3 areas) (modes)
+    -- TODO (let's start with size three)
+    local main_screen = hs.screen.mainScreen()
+    local main_screen_name = screen.name()
+    print("screen name:", main_screen_name) -- DEBUG
+
+    local mode_3 = init_mode_3(main_screen)
     -- Add areas to tiles
 
     -- bind hotkeys to tile supersets

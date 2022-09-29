@@ -63,6 +63,7 @@ end
 local function pom_draw_indicator(time_left, max_time)
     local main_screen = hs.screen.mainScreen()
     local screeng = main_screen:fullFrame()
+
     local time_ratio = time_left / max_time
     local width = math.ceil(screeng.w * time_ratio)
     local left_width = screeng.w - width
