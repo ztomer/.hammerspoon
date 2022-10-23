@@ -200,11 +200,18 @@ local function init_custom_binding()
 end
 
 local function init()
+
+    -- Load Spoons
+    hs.loadSpoon("RoundedCorners")
+    spoon.RoundedCorners:start()
+
     init_wm_binding()
     init_app_binding()
     init_custom_binding()
+
     -- start app launch watcher
     -- hs.application.watcher.new(auto_tile):start()
+
 end
 
 init()
