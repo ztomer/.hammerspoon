@@ -19,6 +19,9 @@ local mash_app = {"shift", "ctrl"}
 local mash_shift = {"shift", "ctrl", "cmd"}
 local mash_test = {"ctrl", "shift"}
 
+-- Hyper key, for the Kinesis360 CAPS
+local HYPER = {"shift", "ctrl", "alt", "cmd"}
+
 --------------------------------------------------------------------------------
 local appCuts = {
     q = 'Twitter',
