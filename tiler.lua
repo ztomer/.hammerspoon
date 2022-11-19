@@ -276,7 +276,7 @@ function tiler_init()
     print("screen name:", main_screen_name) -- DEBUG
 
     -- Add tiles to Zones, map hotkeys,
-
+    init_listener()
     local mode_3 = init_mode_3(main_screen)
     Tile.modes[3] = mode_3
 
