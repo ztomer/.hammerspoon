@@ -1,8 +1,11 @@
--- Manual tiler window manager
+-- Manual Zoner window manager
 require "homebrew"
 
 -- Some design notes with no particular order:
--- Mode contains Tiles, tiles contains Areas
+-- Mode - Per resolution/ screen size Zones configuration
+-- Zone - areas of the screen, each with set of tiles
+-- Tile - pre-set size of windows for each zone
+--
 -- Windows are not automatically resized when switching modes manually
 -- Windows are resized when switching modes automatically
 -- Modes are selected automatically per screen identifier
@@ -10,7 +13,7 @@ require "homebrew"
 -- (14" will be widths 1/2, heights 1/2)
 -- (vertical screen will be width: 1/2, 1/2, heights: 1/3, 2/3, 1 )
 
--- Tile Objects, allows cycling between multiple area of different sizes
+-- Zone Objects, allows cycling between multiple tile of different sizes
 
 -- References:
 -- https://github.com/szymonkaliski/hhtwm/blob/master/hhtwm/init.lua
@@ -35,103 +38,105 @@ require "homebrew"
 -- local namespace
 
 local Tiler = {
-    window2tile = {}, -- Maps window to tile_id and area_id
-    tile_id2tile = {} -- Maps tile_id to tile object
+    window_id2zone_id = {}, -- Maps window to zone_id
+    zone_id2zone = {}, -- Maps zone_id to zone object
+    modes = {}, -- All possible monitor modes
+    windows = nil -- handler for windows events
 }
 
-Area = {
+Tile = {
     topleft_x = 0,
     topleft_y = 0,
     width = 0,
     height = 0
 }
 
-function Area:new(topleft_x, topleft_y, width, height)
-    -- Deines Area - a sub location in a Tile
+function Tile:new(topleft_x, topleft_y, width, height)
+    -- Deines tile - a sub location in a Zone
     self.topleft_x = topleft_x
     self.topleft_y = topleft_y
     self.width = width
     self.height = height
 end
 
-Tile = {
-    -- A tile can contain multiple areas, which defines the possible windows sizes
-    -- for this tile
-    _id = nil, -- unique identifer for the tile
-    _hotkey = nil, -- hotkey to activate this tile
-    _areas = {}, -- possible areas attached to the tile
-    _areas_num = 0, -- number of areas attached to the tile
-    _windows_area = {} -- map between window and active area
+Zone = {
+    -- A Zone can contain multiple tiles, which defines the possible windows sizes
+    -- for this Zone
+    _id = nil, -- unique identifer for the Zone
+    _hotkey = nil, -- hotkey to activate this Zone
+    _tiles = {}, -- possible tiles attached to the Zone
+    _tiles_num = 0, -- number of tiles attached to the Zone
+    _window_id2tile_idx = {} -- map between window_id and active tile idx
 
 }
 
--- map between area and window
+-- map between tile and window
 
-function Tile:new(id, hotkey)
+function Zone:new(id, hotkey)
     self._id = id
     self._hotkey = hotkey
 end
 
-function Tile:area_add(topleft_x, topleft_y, width, height)
-    -- Add areas - all areas MUST be added on init
-    self._areas[self._areas_num] = new
-    Area(topleft_x, topleft_y, width, height)
+function Zone:tile_add(topleft_x, topleft_y, width, height)
+    -- Add tiles - all tiles MUST be added on init
+    self._tiles[self._tiles_num] = new
+    tile(topleft_x, topleft_y, width, height)
 
-    self.areas_num = self.areas_num + 1
+    self.tiles_num = self.tiles_num + 1
 end
 
-function Tile:area_rotate(window_id)
-    -- Return the next area of the tile
-    local area_idx = self._windows_area[window_id] + 1 % self._areas_num
-    self.windows_area[window_id] = area_idx
+function Zone:tile_rotate(window_id)
+    -- Return the next tile of the Zone
+    local tile_idx = self._window_id2tile_idx[window_id] + 1 % self._tiles_num
+    self.windows_tile[window_id] = tile_idx
 end
 
-function Tile:area_get_curr(window_id)
+function Zone:tile_get_curr(window_id)
     -- Get current window position
-    local area_idx = self._windows_area[window_id]
-    return self._areas[area_idx]
+    local tile_idx = self._window_id2tile_idx[window_id]
+    return self._tiles[tile_idx]
 end
 
-function Tile:add_window(window_id)
-    -- Add a window to the tile
-    if self._windows_area[window_id] ~= nil then
+function Zone:add_window(window_id)
+    -- Add a window to the Zone
+    if self._window_id2tile_idx[window_id] ~= nil then
         return
     end
-    self._windows_area[window_id] = 0
 
-    -- add to global window2Tile array
-    Tiler.window2tile[window_id] = {self._id, 0}
+    -- Map a window to a zone, and window to tile (starting with default size (idx 0))
+    self._window_id2tile_idx[window_id] = 0
+    Tiler.window_id2zone_id[window_id] = self._id
 end
 
-function Tile:remove_window(window_id)
-    -- Remove window from the tile
-    if self._windows_area[window_id] == nil then
+function Zone:remove_window(window_id)
+    -- Remove window from the Zone
+    if self._window_id2tile_idx[window_id] == nil then
         return
     end
-    self._windows_area[window_id] = nil
-    Tiler.window2Tile[window_id] = nil
+    self._window_id2tile_idx[window_id] = nil
+    Tiler.window_id2zone_id[window_id] = nil
 end
 
 -- TODO: Move windows
--- TODO: map active windows to areas
+-- TODO: map active windows to tiles
 
-function Tile:resize_window(window_id)
-    -- Get current tile and area
-    local area = self._windows_area[window_id]
+function Zone:resize_window(window_id)
+    -- Get current Zone and tile
+    local tile = self._window_id2tile_idx[window_id]
 
     -- Resize the window
 
-    -- If the target tile and the current tile are not the same,
-    -- remove the window id from the current Tile, add to the target tile,
-    -- set the area inde to 0 and move the window to the area coordinates
+    -- If the target Zone and the current Zone are not the same,
+    -- remove the window id from the current Zone, add to the target Zone,
+    -- set the tile inde to 0 and move the window to the tile coordinates
     -- hw.window:setFrameInScreenBounds
     -- hs.window:setSize(size)
     -- hs.window:setTopLeft(point)
 
 end
 
-function activate_move_tile(tile_id)
-    -- Activates a move_tile operation on the focused window
+function activate_move_zone(zone_id)
+    -- Activates a move_zone operation on the focused window
 
     -- Also move window
     -- Get focused window id
@@ -139,29 +144,35 @@ function activate_move_tile(tile_id)
     local win = hs.window.focusedWindow()
     local win_id = win:id()
 
-    -- Get Tile, get area (can be empty)
-    local window_tile_id, window_area_idx = Tiler.window2Tile[win_id]
-    local tile = Tiler.tile_id2tile(tile_id)
+    -- Get Zone, get tile (can be empty)
+    local window_zone_id, window_tile_idx = Tiler.window_id2zone_id[win_id]
+    local zone = Tiler.zone_id2zone(zone_id)
 
-    if tile_id == nil then
-        -- if the target tile is empty, add the window, resize, and done
-        tile.add_window(win_id)
-    elseif tile_id ~= window_tile_id then
-        -- If moving between tiles,
-        local source_tile = Tiler.tile_id2tile(window_tile_id)
-        source_tile.remove_window(window_tile_id)
-        tile.add_window(win_id)
+    if zone_id == nil then
+        -- if the target Zone is empty, add the window, resize, and done
+        zone.add_window(win_id)
+    elseif zone_id ~= window_zone_id then
+        -- If moving between Zones, remove from the first zone and add to the second
+        local source_zone = Tiler.zone_id2zone(window_zone_id)
+        source_zone.remove_window(window_zone_id)
+        Zone.add_window(win_id)
     else
-        -- Multiple calls to the same window on the same tile, rotate between areas
-        tile.area_rotate(win_id)
+        -- Multiple calls to the same window on the same Zone, rotate between tiles
+        Zone.tile_rotate(win_id)
     end
-    tile.resize_window(win_id)
+    Zone.resize_window(win_id)
 
 end
 
-function activate_window_closed()
-    -- TODO: remove a window ID when an application is terminated or a window is closed
-    -- Ignoring for now, adding huge amount of watchers is not feasible, and at worse the cache will be a less than 100Kb
+function activate_window_event(win_obj, appName, event_name)
+    -- The callback is generic and handles all subscribed events
+    -- Remove a window ID when an application is terminated or a window is closed
+    if event_name == "windowDestroyed" then
+        local win_id = win_obj:id()
+        local zone_id = Tiler.window_id2zone_id()
+        local zone_obj = Tiler.zone_id2zone[zone_id]
+        zone_obj.remove_window(win_id)
+    end
 end
 
 function activate_window_display_moved()
@@ -176,6 +187,7 @@ local function init_mode_3(screen)
     -- [H--|J-----|K--]
     -- [N--|M-----|,--]
     -- TODO: Should be done per screen
+    -- TODO: This should be read from a config file
 
     local display_rect = screen:frame()
     local w = display_rect.w
@@ -189,75 +201,84 @@ local function init_mode_3(screen)
     local half_height = h // 2
     local two_third_height = (h * 2) // 3
     local third_height = h // 3
-    local y_tile = Tile:new("Y", {"ctrl", "cmd", "y"})
-    y_tile.area_add(x, y, quarter_screen, half_height) -- Top half
-    y_tile.area_add(x, y, quarter_screen, two_third_height) -- Top 2/3
-    y_tile.area_add(x, y, quarter_screen, third_height) -- Top third
+    local y_zone = Zone:new("Y", {"ctrl", "cmd", "y"})
+    y_zone.tile_add(x, y, quarter_screen, half_height) -- Top half
+    y_zone.tile_add(x, y, quarter_screen, two_third_height) -- Top 2/3
+    y_zone.tile_add(x, y, quarter_screen, third_height) -- Top third
 
-    local h_tile = Tile:new("H", {"ctrl", "cmd", "u"})
-    h_tile.area_add(x, y, quarter_screen, h) -- full left third
-    h_tile.area_add(x, y + third_height + 1, quarter_screen, third_height)
+    local h_zone = Zone:new("H", {"ctrl", "cmd", "u"})
+    h_zone.tile_add(x, y, quarter_screen, h) -- full left third
+    h_zone.tile_add(x, y + third_height + 1, quarter_screen, third_height)
 
-    local n_tile = Tile:new("N", {"ctrl", "cmd", "i"})
-    n_tile.area_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
-    n_tile.area_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
-    n_tile.area_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
+    local n_zone = Zone:new("N", {"ctrl", "cmd", "i"})
+    n_zone.tile_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
+    n_zone.tile_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
+    n_zone.tile_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
 
     -- Middle set, half of the screen
     x = quarter_screen + 1
     w = half_screen
-    local u_tile = Tile:new("U", {"ctrl", "cmd", "h"})
-    u_tile.area_add(x, y, half_screen, half_height) -- middle half
-    u_tile.area_add(x, y, half_screen, two_third_height) -- Top 2/3
-    u_tile.area_add(x, y, half_screen, third_height)
+    local u_zone = Zone:new("U", {"ctrl", "cmd", "h"})
+    u_zone.tile_add(x, y, half_screen, half_height) -- middle half
+    u_zone.tile_add(x, y, half_screen, two_third_height) -- Top 2/3
+    u_zone.tile_add(x, y, half_screen, third_height)
 
-    local j_tile = Tile:new("J", {"ctrl", "cmd", "j"})
-    j_tile.area_add(x, y, half_screen, h) -- Full middle
-    j_tile.area_add(x, y + third_height + 1, third_height)
-    local m_tile = Tile:new("M", {"ctrl", "cmd", "k"})
-    n_tile.area_add(x, y + half_height + 1, half_screen, half_height) -- Bottom half
-    n_tile.area_add(x, y + third_height + 1, half_screen, two_third_height) -- Bottom 2/3
-    n_tile.area_add(x, y + two_third_height + 1, half_screen, third_height) -- Bottom third
+    local j_zone = Zone:new("J", {"ctrl", "cmd", "j"})
+    j_zone.tile_add(x, y, half_screen, h) -- Full middle
+    j_zone.tile_add(x, y + third_height + 1, third_height)
+    local m_Zone = Zone:new("M", {"ctrl", "cmd", "k"})
+    n_zone.tile_add(x, y + half_height + 1, half_screen, half_height) -- Bottom half
+    n_zone.tile_add(x, y + third_height + 1, half_screen, two_third_height) -- Bottom 2/3
+    n_zone.tile_add(x, y + two_third_height + 1, half_screen, third_height) -- Bottom third
 
     -- Move to last quarter
     w = x + w + 1
     w = quarter_screen
 
-    local i_tile = Tile:new("I", {"ctrl", "cmd", "n"})
-    i_tile.area_add(x, y, quarter_screen, half_height) -- Top half
-    i_tile.area_add(x, y, quarter_screen, two_third_height) -- Top 2/3
-    i_tile.area_add(x, y, quarter_screen, third_height) -- Top third
+    local i_zone = Zone:new("I", {"ctrl", "cmd", "n"})
+    i_zone.tile_add(x, y, quarter_screen, half_height) -- Top half
+    i_zone.tile_add(x, y, quarter_screen, two_third_height) -- Top 2/3
+    i_zone.tile_add(x, y, quarter_screen, third_height) -- Top third
 
-    local k_tile = Tile:new("K", {"ctrl", "cmd", "m"})
-    k_tile.area_add(x, y, quarter_screen, h) -- full left third
-    k_tile.area_add(x, y + third_height + 1, quarter_screen, third_height)
+    local k_zone = Zone:new("K", {"ctrl", "cmd", "m"})
+    k_zone.tile_add(x, y, quarter_screen, h) -- full left third
+    k_zone.tile_add(x, y + third_height + 1, quarter_screen, third_height)
 
-    local m1_tile = Tile:new("M1", {"ctrl", "cmd", ","})
-    m1_tile.area_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
-    m1_tile.area_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
-    m1_tile.area_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
+    local m1_zone = Zone:new("M1", {"ctrl", "cmd", ","})
+    m1_zone.tile_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
+    m1_zone.tile_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
+    m1_zone.tile_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
 
-    local mode_3 = {y_tile, u_tile, i_tile, --
-    h_tile, j_tile, k_tile, --
-    n_tile, m_tile, m1_tile --
+    local mode_3 = {y_zone, u_zone, i_zone, --
+    h_zone, j_zone, k_zone, --
+    n_zone, m_zone, m1_zone --
     }
 
     return mode_3
 end
 
+function init_listener()
+    -- Initialize event filter
+    Tiler.windows = hs.window.filter.new()
+    Tiler.windows:setDefaultFilter{}
+    Tiler.windows:setSortOrder(hs.window.filter.sortByFocusedLast)
+
+    -- subscribe to a Window closed event
+    Tiler.windows:subscribe(hs.window.filter.windowDestroyed, activate_window_event)
+
+end
+
 function tiler_init()
-    -- Create tiles supersets (1, 2, 3 areas) (modes)
+    -- Create Zones supersets (1, 2, 3 tiles) (modes)
     -- TODO (let's start with size three)
     local main_screen = hs.screen.mainScreen()
     local main_screen_name = screen.name()
     print("screen name:", main_screen_name) -- DEBUG
 
+    -- Add tiles to Zones, map hotkeys,
+
     local mode_3 = init_mode_3(main_screen)
-    -- Add areas to tiles
-
-    -- bind hotkeys to tile supersets
-
-    -- Bind hotkeys to tiles per superset (needs to be moved to a different function)
+    Tile.modes[3] = mode_3
 
     -- listen on window destruction for cleanups (can be very problematic if ids are recycled)
 
