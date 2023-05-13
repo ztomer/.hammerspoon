@@ -206,7 +206,7 @@ local function increase_brightness()
     -- Get the currently focused screen
     local screen = hs.screen.mainScreen()
     local brightness = hs.screen.getBrightness()
-    local target_brightness = math.max(brightness + 0.1, 0)
+    local target_brightness = math.min(brightness + 0.1, 1)
     ha.screen.setBrightness(target_brightness)
 
 end
