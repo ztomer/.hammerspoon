@@ -37,10 +37,10 @@ local appCuts = {
     g = 'Gmail',
 
     z = 'Double Commander',
-    -- X
+    x = 'Microsoft Edge',
     c = 'Google Chrome',
-    v = 'Visual Studio Code'
-    -- B
+    v = 'Visual Studio Code',
+    b = 'BingGPT'
 
 }
 
@@ -111,7 +111,7 @@ local function init_wm_binding()
     hs.hotkey.bind(mash, '[', function()
         hs.grid.adjustHeight(-1)
     end)
-
+    --
     -- change focus
     hs.hotkey.bind(mash_shift, 'H', function()
         hs.window.focusedWindow():focusWindowWest()
@@ -197,8 +197,34 @@ local function init_app_binding()
 end
 
 local function init_custom_binding()
-    hs.hotkey.bind("ctrl", "ESCAPE", function()
+    hs.hotkey.bind(HYPER, "ESCAPE", function()
         toggle_app("Activity Monitor")
+    end)
+end
+
+local function increase_brightness()
+    -- Get the currently focused screen
+    local screen = hs.screen.mainScreen()
+    local brightness = hs.screen.getBrightness()
+    local target_brightness = math.max(brightness + 0.1, 0)
+    ha.screen.setBrightness(target_brightness)
+
+end
+
+local function decrease_brightness()
+    local screen = hs.screen.mainScreen()
+    local brightness = hs.screen.getBrightness()
+    local target_brightness = math.max(brightness - 0.1, 0)
+    hs.screen.setBrightness(target_brightness)
+end
+
+local function init_brigheness()
+    hs.hotkey.bind(HYPER, "up", function()
+        increase_brightness()
+    end)
+
+    hs.hotkey.bind(HYPER, "down", function()
+        decrease_brightness()
     end)
 end
 
@@ -211,6 +237,7 @@ local function init()
     init_wm_binding()
     init_app_binding()
     init_custom_binding()
+    --  init_brigheness() -- Doesn't work on my externl Dell display
 
     -- start app launch watcher
     -- hs.application.watcher.new(auto_tile):start()

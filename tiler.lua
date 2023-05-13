@@ -13,7 +13,8 @@ require "homebrew"
 -- (14" will be widths 1/2, heights 1/2)
 -- (vertical screen will be width: 1/2, 1/2, heights: 1/3, 2/3, 1 )
 
--- Zone Objects, allows cycling between multiple tile of different sizes
+-- Zone Objects, allows cycling between multiple tiles of different sizes
+-- Store the windows in an LRU DLL, on keybinding to zone cycle between the windows in this Zone
 
 -- References:
 -- https://github.com/szymonkaliski/hhtwm/blob/master/hhtwm/init.lua
@@ -35,8 +36,8 @@ require "homebrew"
 --- Callbacks (cool trick - store the id of the current window in a global, if destroyed or closed, remove the global
 -- value from the cache and update the currently focused winid to be the global)
 -- https://github.com/mobily/awesome-keys
--- local namespace
 
+-- local namespace
 local Tiler = {
     window_id2zone_id = {}, -- Maps window to zone_id
     zone_id2zone = {}, -- Maps zone_id to zone object
