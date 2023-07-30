@@ -3,8 +3,8 @@ require "pomodoor"
 require "homebrew"
 
 -- init grid
-hs.grid.MARGINX = 0
-hs.grid.MARGINY = 0
+hs.grid.MARGINX = 5
+hs.grid.MARGINY = 5
 hs.grid.GRIDWIDTH = 7
 hs.grid.GRIDHEIGHT = 3
 
@@ -21,6 +21,30 @@ local mash_test = {"ctrl", "shift"}
 
 -- Hyper key, for the Kinesis360 CAPS
 local HYPER = {"shift", "ctrl", "alt", "cmd"}
+local watcher = hs.window.filter.new()
+
+local function snap_to_grid(window)
+    -- Snap a window to the grid
+    if window and window:isStandard() and window:isVisible() then
+        hs.grid.snap(window)
+    end
+end
+
+local function snap_all_windows()
+    -- Snap all the windows to the grid
+    local windows = hs.window.visibleWindows()
+    for _, window in ipairs(windows) do
+        snap_to_grid(window)
+    end
+end
+
+local function init_watcher()
+
+    -- Init the automatic snapper
+    watcher:subscribe(hs.window.filter.windowCreated, snap_to_grid)
+    watcher:subscribe(hs.window.filter.windowFocused, snap_to_grid)
+    -- watcher:start()
+end
 
 --------------------------------------------------------------------------------
 local appCuts = {
@@ -94,8 +118,8 @@ local function init_wm_binding()
     hs.hotkey.bind(mash, ';', function()
         hs.grid.snap(hs.window.focusedWindow())
     end)
-    hs.hotkey.bind(mash, "'", function()
-        hs.fnutils.map(hs.window.visibleWindows(), hs.grid.snap)
+    hs.hotkey.bind(HYPER, "G", function()
+        hs.fnutils.map(snap_all_windows, hs.grid.snap)
     end)
 
     -- adjust grid size
@@ -237,6 +261,7 @@ local function init()
     init_wm_binding()
     init_app_binding()
     init_custom_binding()
+    init_watcher()
     --  init_brigheness() -- Doesn't work on my externl Dell display
 
     -- start app launch watcher
