@@ -48,7 +48,7 @@ end
 
 --------------------------------------------------------------------------------
 local appCuts = {
-    q = 'Twitter',
+    q = 'Discord',
     w = 'Whatsapp',
     e = 'Finder',
     r = 'Cronometer',
@@ -56,7 +56,7 @@ local appCuts = {
 
     a = 'Notion',
     s = 'Spotify',
-    d = 'Cron',
+    d = 'Notion Calendar',
     f = 'Firefox',
     g = 'Gmail',
 
@@ -64,7 +64,7 @@ local appCuts = {
     x = 'Microsoft Edge',
     c = 'Google Chrome',
     v = 'Visual Studio Code',
-    b = 'BingGPT'
+    b = 'Copilot'
 
 }
 
@@ -187,6 +187,18 @@ local function init_wm_binding()
     end)
 end
 
+local function ambigious_app_name(app_name, title)
+    -- Notion is part of notion calendar, let's check for it specifically
+    if (app_name == 'notion' and title == 'notion calendar') then
+        return true
+    end
+
+    if (title == 'notion' and app_name == 'notion calendar') then
+        return true
+    end
+    return false
+end
+
 local function toggle_app(app)
     -- Minimize the window if the focused window is the same as the launched window
     -- This is done to easliy pop and hide an application
@@ -199,15 +211,17 @@ local function toggle_app(app)
 
         if title ~= nil then
             -- Check both ways, the naming conventions of the title are not consistent
-            if string.find(title, app_name) or string.find(app_name, title) then
-                front_app:hide()
-                return
+            if not ambigious_app_name(title, app_name) then
+                if string.find(title, app_name) or string.find(app_name, title) then
+                    front_app:hide()
+                    return
+                end
+
             end
         end
     end
 
     hs.application.launchOrFocus(app)
-
 end
 
 -- Init Launch applications bindings
