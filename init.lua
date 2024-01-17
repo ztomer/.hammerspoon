@@ -187,36 +187,33 @@ local function init_wm_binding()
     end)
 end
 
+local ambigious_apps = {{'notion', 'notion calendar'}}
 local function ambigious_app_name(app_name, title)
-    -- Notion is part of notion calendar, let's check for it specifically
-    if (app_name == 'notion' and title == 'notion calendar') then
-        return true
+    -- Some application names are ambigious - may be part of a different app name or vice versa.
+    -- this function disambiguates some known applications.
+    for _, tuple in ipairs(ambigious_apps) do
+        if (app_name == tuple[1] and title == tuple[2]) or (app_name == tuple[2] and title == tuple[1]) then
+            return true
+        end
     end
 
-    if (title == 'notion' and app_name == 'notion calendar') then
-        return true
-    end
     return false
 end
 
 local function toggle_app(app)
     -- Minimize the window if the focused window is the same as the launched window
     -- This is done to easliy pop and hide an application
-
     -- If the focused app is the one with assigned shortcut, hide it
+
     local front_app = hs.application.frontmostApplication()
+    local title = front_app:name():lower()
     local app_name = app:lower()
-    if app ~= nil then
-        local title = front_app:name():lower()
-
-        if title ~= nil then
-            -- Check both ways, the naming conventions of the title are not consistent
-            if not ambigious_app_name(title, app_name) then
-                if string.find(title, app_name) or string.find(app_name, title) then
-                    front_app:hide()
-                    return
-                end
-
+    if app_name ~= nil and title ~= nil then
+        -- Check both ways, the naming conventions of the title are not consistent
+        if not ambigious_app_name(title, app_name) then
+            if string.find(title, app_name) or string.find(app_name, title) then
+                front_app:hide()
+                return
             end
         end
     end
