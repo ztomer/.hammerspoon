@@ -48,7 +48,7 @@ end
 
 --------------------------------------------------------------------------------
 local appCuts = {
-    q = 'Discord',
+    q = 'Arc',
     w = 'Whatsapp',
     e = 'Finder',
     r = 'Cronometer',
@@ -61,11 +61,16 @@ local appCuts = {
     g = 'Gmail',
 
     z = 'Double Commander',
-    x = 'Microsoft Edge',
+    x = 'Gemini',
     c = 'Google Chrome',
     v = 'Visual Studio Code',
     b = 'Copilot'
+}
 
+local hyperAppCuts = {
+    q = 'IBKR Desktop',
+    w = 'Weather',
+    e = 'Clock'
 }
 
 -- Display Help
@@ -74,11 +79,19 @@ local function display_help()
     table.insert(t, "Keyboard shortcuts\n")
     table.insert(t, "--------------------\n")
 
+    -- Show application shortcuts
     for key, app in pairs(appCuts) do
         local str = "Control + CMD + " .. key .. "\t :\t" .. app .. "\n"
         -- hs.alert.show(str)
         table.insert(t, str)
     end
+
+    -- Show hyper application shortcuts
+    for key, app in pairs(hyperAppCuts) do
+        local str = "HYPER + " .. key .. "\t:\t" .. app .. "\n"
+        table.insert(t, str)
+    end
+
     local concat_t = table.concat(t)
     hs.alert.show(concat_t, 2)
 
@@ -115,10 +128,11 @@ local function init_wm_binding()
     end)
 
     -- global operations
-    hs.hotkey.bind(mash, ';', function()
+    hs.hotkey.bind(HYPER, ";", function()
         hs.grid.snap(hs.window.focusedWindow())
     end)
-    hs.hotkey.bind(HYPER, "G", function()
+
+    hs.hotkey.bind(HYPER, "g", function()
         hs.fnutils.map(snap_all_windows, hs.grid.snap)
     end)
 
@@ -223,45 +237,54 @@ end
 
 -- Init Launch applications bindings
 local function init_app_binding()
+
+    -- Quick shortcuts to launch applications
     for key, app in pairs(appCuts) do
-        -- hs.hotkey.bind(mash_app, key, function () hs.application.launchOrFocus(app) end)
         hs.hotkey.bind(mash_app, key, function()
+            toggle_app(app)
+        end)
+    end
+
+    -- Hyper shortcuts to launch applications
+    for key, app in pairs(hyperAppCuts) do
+        hs.hotkey.bind(HYPER, key, function()
             toggle_app(app)
         end)
     end
 end
 
 local function init_custom_binding()
-    hs.hotkey.bind(HYPER, "ESCAPE", function()
+    -- Custom key bindings that do not match any of the above
+    hs.hotkey.bind(HYPER, "=", function()
         toggle_app("Activity Monitor")
     end)
 end
 
-local function increase_brightness()
-    -- Get the currently focused screen
-    local screen = hs.screen.mainScreen()
-    local brightness = hs.screen.getBrightness()
-    local target_brightness = math.min(brightness + 0.1, 1)
-    ha.screen.setBrightness(target_brightness)
+-- local function increase_brightness()
+--     -- Get the currently focused screen
+--     local screen = hs.screen.mainScreen()
+--     local brightness = hs.screen.getBrightness()
+--     local target_brightness = math.min(brightness + 0.1, 1)
+--     ha.screen.setBrightness(target_brightness)
 
-end
+-- end
 
-local function decrease_brightness()
-    local screen = hs.screen.mainScreen()
-    local brightness = hs.screen.getBrightness()
-    local target_brightness = math.max(brightness - 0.1, 0)
-    hs.screen.setBrightness(target_brightness)
-end
+-- local function decrease_brightness()
+--     local screen = hs.screen.mainScreen()
+--     local brightness = hs.screen.getBrightness()
+--     local target_brightness = math.max(brightness - 0.1, 0)
+--     hs.screen.setBrightness(target_brightness)
+-- end
 
-local function init_brigheness()
-    hs.hotkey.bind(HYPER, "up", function()
-        increase_brightness()
-    end)
+-- local function init_brigheness()
+--     hs.hotkey.bind(HYPER, "up", function()
+--         increase_brightness()
+--     end)
 
-    hs.hotkey.bind(HYPER, "down", function()
-        decrease_brightness()
-    end)
-end
+--     hs.hotkey.bind(HYPER, "down", function()Mi
+--         decrease_brightness()
+--     end)
+-- end
 
 local function init()
 
