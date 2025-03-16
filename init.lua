@@ -1,4 +1,5 @@
 -- Hammerspoon configuration, heavily influenced by sdegutis default configuration
+-- hs.grid.setGrid("10x4")
 require "pomodoor"
 require "homebrew"
 
@@ -7,6 +8,10 @@ hs.grid.MARGINX = 5
 hs.grid.MARGINY = 5
 hs.grid.GRIDWIDTH = 7
 hs.grid.GRIDHEIGHT = 3
+
+-- hs.grid.HINTS = {{"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10"},
+--                  {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"}, {"Q", "W", "F", "P", "V", "J", "L", "U", "Y", ";"},
+--                  {"A", "R", "S", "T", "G", "M", "N", "E", "I", "O"}, {"Z", "X", "C", "D", "B", "K", "H", ",", ".", "/"}}
 
 -- disable animation
 hs.window.animationDuration = 0
@@ -48,29 +53,31 @@ end
 
 --------------------------------------------------------------------------------
 local appCuts = {
-    q = 'Arc',
+    q = 'BambuStudio',
     w = 'Whatsapp',
     e = 'Finder',
     r = 'Cronometer',
-    t = 'iterm',
+    t = 'iTerm',
 
     a = 'Notion',
-    s = 'Spotify',
+    s = 'Notion Mail',
     d = 'Notion Calendar',
     f = 'Firefox',
     g = 'Gmail',
 
-    z = 'Double Commander',
-    x = 'Gemini',
-    c = 'Google Chrome',
+    z = 'Nimble Commander',
+    x = 'Claude',
+    c = 'Arc',
     v = 'Visual Studio Code',
-    b = 'Copilot'
+    b = 'Spotify'
 }
 
 local hyperAppCuts = {
     q = 'IBKR Desktop',
     w = 'Weather',
-    e = 'Clock'
+    e = 'Clock',
+    r = 'Discord',
+    t = 'ChatGpt'
 }
 
 -- Display Help
@@ -189,7 +196,7 @@ local function init_wm_binding()
     -- hs.hotkey.bind(mash, '.', function() hs.hints.windowHints(hs.window.allWindows()) end)
     hs.hotkey.bind(mash, '.', hs.hints.windowHints)
 
-    -- pomodoro key binding
+    -- Pomodoro key binding
     hs.hotkey.bind(mash, '9', function()
         pom_enable()
     end)
@@ -201,11 +208,12 @@ local function init_wm_binding()
     end)
 end
 
-local ambigious_apps = {{'notion', 'notion calendar'}}
-local function ambigious_app_name(app_name, title)
-    -- Some application names are ambigious - may be part of a different app name or vice versa.
+local hide_workaround_list = {'Arc'}
+local ambiguous_apps = {{'notion', 'notion calendar'}, {'notion', 'notion mail'}}
+local function ambiguous_app_name(app_name, title)
+    -- Some application names are ambiguous - may be part of a different app name or vice versa.
     -- this function disambiguates some known applications.
-    for _, tuple in ipairs(ambigious_apps) do
+    for _, tuple in ipairs(ambiguous_apps) do
         if (app_name == tuple[1] and title == tuple[2]) or (app_name == tuple[2] and title == tuple[1]) then
             return true
         end
@@ -215,24 +223,51 @@ local function ambigious_app_name(app_name, title)
 end
 
 local function toggle_app(app)
-    -- Minimize the window if the focused window is the same as the launched window
-    -- This is done to easliy pop and hide an application
-    -- If the focused app is the one with assigned shortcut, hide it
+    --[[
+    Toggles an application between focused and hidden states
+
+    This function will:
+    1. Hide the application if it's currently focused
+    2. Focus the application if it's not currently focused
+    3. Handle special-case applications (in hide_workaround_list) that require menu-based hiding
+
+    @param app (string) The name of the application to toggle
+    ]]
 
     local front_app = hs.application.frontmostApplication()
-    local title = front_app:name():lower()
-    local app_name = app:lower()
-    if app_name ~= nil and title ~= nil then
-        -- Check both ways, the naming conventions of the title are not consistent
-        if not ambigious_app_name(title, app_name) then
-            if string.find(title, app_name) or string.find(app_name, title) then
-                front_app:hide()
-                return
-            end
+    local front_app_name = front_app:name()
+    local target_app_name = app
+
+    -- Convert both names to lowercase for comparison
+    local front_app_lower = front_app_name:lower()
+    local target_app_lower = target_app_name:lower()
+
+    -- Check if we're already on the app we want to toggle
+    local is_same_app = false
+
+    if not ambiguous_app_name(front_app_lower, target_app_lower) then
+        if string.find(front_app_lower, target_app_lower) or string.find(target_app_lower, front_app_lower) then
+            is_same_app = true
         end
     end
 
-    hs.application.launchOrFocus(app)
+    -- If we're on the target app, hide it (with special handling for workaround apps)
+    if is_same_app then
+        -- Check if current app needs special hide handling
+        for _, v in ipairs(hide_workaround_list) do
+            if string.lower(v) == front_app_lower then
+                front_app:selectMenuItem("Hide " .. front_app_name)
+                return
+            end
+        end
+
+        -- Normal hide for other apps
+        front_app:hide()
+        return
+    end
+
+    -- Not on the target app, so launch or focus it
+    hs.application.launchOrFocus(target_app_name)
 end
 
 -- Init Launch applications bindings
@@ -285,6 +320,10 @@ end
 --         decrease_brightness()
 --     end)
 -- end
+
+-- WARNING: This is a VERY rough example and might not work as intended.
+-- It demonstrates the general idea, but achieving rounded corners
+-- will be significantly more complex.
 
 local function init()
 
