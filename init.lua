@@ -1,70 +1,50 @@
 -- Hammerspoon configuration, heavily influenced by sdegutis default configuration
--- hs.grid.setGrid("10x4")
 require "pomodoor"
 require "homebrew"
 
--- init grid
-hs.grid.MARGINX = 5
-hs.grid.MARGINY = 5
-hs.grid.GRIDWIDTH = 7
-hs.grid.GRIDHEIGHT = 3
+-- Initialize constants
+local GRID_MARGIN_X = 5
+local GRID_MARGIN_Y = 5
+local GRID_WIDTH = 7
+local GRID_HEIGHT = 3
 
--- hs.grid.HINTS = {{"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10"},
---                  {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"}, {"Q", "W", "F", "P", "V", "J", "L", "U", "Y", ";"},
---                  {"A", "R", "S", "T", "G", "M", "N", "E", "I", "O"}, {"Z", "X", "C", "D", "B", "K", "H", ",", ".", "/"}}
-
--- disable animation
-hs.window.animationDuration = 0
--- hs.hints.style = "vimperator"
-
--- hotkey mash
+-- Key combinations
 local mash = {"ctrl", "cmd"}
--- local mash_app 	 = {"cmd", "alt", "ctrl"}
 local mash_app = {"shift", "ctrl"}
 local mash_shift = {"shift", "ctrl", "cmd"}
-local mash_test = {"ctrl", "shift"}
-
--- Hyper key, for the Kinesis360 CAPS
 local HYPER = {"shift", "ctrl", "alt", "cmd"}
-local watcher = hs.window.filter.new()
 
-local function snap_to_grid(window)
-    -- Snap a window to the grid
-    if window and window:isStandard() and window:isVisible() then
-        hs.grid.snap(window)
-    end
-end
+-- Cache frequently accessed functions
+local gridSnap = hs.grid.snap
+local appLaunchOrFocus = hs.application.launchOrFocus
 
-local function snap_all_windows()
-    -- Snap all the windows to the grid
-    local windows = hs.window.visibleWindows()
-    for _, window in ipairs(windows) do
-        snap_to_grid(window)
-    end
-end
+-- Pre-compile application lists for faster lookups
+local hide_workaround_apps = {
+    arc = true
+} -- lowercase map for O(1) lookups
 
-local function init_watcher()
+-- Special cases where launch name differs from UI name (with both directions for complete matching)
+local app_name_pairs = {
+    ["bambustudio_bambu studio"] = true,
+    ["bambu studio_bambustudio"] = true,
+    ["notion_notion calendar"] = true,
+    ["notion calendar_notion"] = true,
+    ["notion_notion mail"] = true,
+    ["notion mail_notion"] = true
+}
 
-    -- Init the automatic snapper
-    watcher:subscribe(hs.window.filter.windowCreated, snap_to_grid)
-    watcher:subscribe(hs.window.filter.windowFocused, snap_to_grid)
-    -- watcher:start()
-end
-
---------------------------------------------------------------------------------
+-- Application shortcuts with direct lowercase mapping
 local appCuts = {
     q = 'BambuStudio',
     w = 'Whatsapp',
     e = 'Finder',
     r = 'Cronometer',
     t = 'iTerm',
-
     a = 'Notion',
     s = 'Notion Mail',
     d = 'Notion Calendar',
     f = 'Firefox',
     g = 'Gmail',
-
     z = 'Nimble Commander',
     x = 'Claude',
     c = 'Arc',
@@ -80,70 +60,134 @@ local hyperAppCuts = {
     t = 'ChatGpt'
 }
 
--- Display Help
-local function display_help()
-    local t = {}
-    table.insert(t, "Keyboard shortcuts\n")
-    table.insert(t, "--------------------\n")
+-- Help text cache
+local help_text = nil
 
-    -- Show application shortcuts
-    for key, app in pairs(appCuts) do
-        local str = "Control + CMD + " .. key .. "\t :\t" .. app .. "\n"
-        -- hs.alert.show(str)
-        table.insert(t, str)
-    end
+-- Window filter
+local watcher = hs.window.filter.new()
 
-    -- Show hyper application shortcuts
-    for key, app in pairs(hyperAppCuts) do
-        local str = "HYPER + " .. key .. "\t:\t" .. app .. "\n"
-        table.insert(t, str)
-    end
+-- ===== Utility Functions =====
 
-    local concat_t = table.concat(t)
-    hs.alert.show(concat_t, 2)
+--[[
+  Checks if two app names are a known pair (either ambiguous or special cases)
 
+  @param name1 (string) First application name
+  @param name2 (string) Second application name
+  @return (boolean) true if the app names are a known pair, false otherwise
+]]
+local function is_app_name_pair(name1, name2)
+    local key = name1 .. "_" .. name2
+    return app_name_pairs[key] == true
 end
 
--- snap all newly launched windows
-local function auto_tile(appName, event)
-    if event == hs.application.watcher.launched then
-        local app = hs.appfinder.appFromName(appName)
-        -- protect against unexpected restarting windows
-        if app == nil then
+--[[
+  Toggles an application between focused and hidden states
+
+  @param app (string) The name of the application to toggle
+]]
+local function toggle_app(app)
+    local front_app = hs.application.frontmostApplication()
+    local front_app_name = front_app:name():lower()
+    local target_app_name = app:lower()
+
+    -- Check if we're already on the app we want to toggle
+    local is_same_app = false
+
+    -- Check if they're a known pair (special cases like BambuStudio/Bambu Studio or ambiguous apps)
+    if is_app_name_pair(front_app_name, target_app_name) then
+        is_same_app = true
+    else
+        -- Standard check for app name match
+        if string.find(front_app_name, target_app_name, 1, true) or
+            string.find(target_app_name, front_app_name, 1, true) then
+            is_same_app = true
+        end
+    end
+
+    if is_same_app then
+        -- Use direct lookup instead of iteration for apps that need special hiding
+        if hide_workaround_apps[front_app_name] then
+            front_app:selectMenuItem("Hide " .. front_app:name())
             return
         end
-        hs.fnutils.map(app:allWindows(), hs.grid.snap)
+
+        -- Hide the application
+        front_app:hide()
+        return
+    end
+
+    -- Not on target app, so launch or focus it
+    appLaunchOrFocus(app)
+end
+
+--[[
+  Snaps a window to the grid
+
+  @param window (hs.window) The window to snap
+]]
+local function snap_to_grid(window)
+    if window and window:isStandard() and window:isVisible() then
+        gridSnap(window)
     end
 end
 
--- Moves all windows outside the view into the curent view
+--[[
+  Snaps all visible windows to the grid
+]]
+local function snap_all_windows()
+    for _, window in ipairs(hs.window.visibleWindows()) do
+        snap_to_grid(window)
+    end
+end
+
+--[[
+  Displays help screen with keyboard shortcuts
+]]
+local function display_help()
+    if not help_text then
+        local t = {"Keyboard shortcuts\n", "--------------------\n"}
+
+        for key, app in pairs(appCuts) do
+            table.insert(t, "Control + CMD + " .. key .. "\t :\t" .. app .. "\n")
+        end
+
+        for key, app in pairs(hyperAppCuts) do
+            table.insert(t, "HYPER + " .. key .. "\t:\t" .. app .. "\n")
+        end
+
+        help_text = table.concat(t)
+    end
+
+    hs.alert.show(help_text, 2)
+end
+
+--[[
+  Moves all windows outside the view into the current view
+]]
 local function rescue_windows()
     local screen = hs.screen.mainScreen()
     local screenFrame = screen:fullFrame()
-    local wins = hs.window.visibleWindows()
-    for i, win in ipairs(wins) do
-        local frame = win:frame()
-        if not frame:inside(screenFrame) then
+
+    for _, win in ipairs(hs.window.visibleWindows()) do
+        if not win:frame():inside(screenFrame) then
             win:moveToScreen(screen, true, true)
         end
     end
 end
 
+-- ===== Initialization Functions =====
+
+--[[
+  Initializes window management keybindings
+]]
 local function init_wm_binding()
-    hs.hotkey.bind(mash_app, '/', function()
-        display_help()
-    end)
-
-    -- global operations
+    hs.hotkey.bind(mash_app, '/', display_help)
     hs.hotkey.bind(HYPER, ";", function()
-        hs.grid.snap(hs.window.focusedWindow())
+        gridSnap(hs.window.focusedWindow())
     end)
+    hs.hotkey.bind(HYPER, "g", snap_all_windows)
 
-    hs.hotkey.bind(HYPER, "g", function()
-        hs.fnutils.map(snap_all_windows, hs.grid.snap)
-    end)
-
-    -- adjust grid size
+    -- Grid size adjustments
     hs.hotkey.bind(mash, '=', function()
         hs.grid.adjustWidth(1)
     end)
@@ -156,8 +200,8 @@ local function init_wm_binding()
     hs.hotkey.bind(mash, '[', function()
         hs.grid.adjustHeight(-1)
     end)
-    --
-    -- change focus
+
+    -- Window focus
     hs.hotkey.bind(mash_shift, 'H', function()
         hs.window.focusedWindow():focusWindowWest()
     end)
@@ -172,115 +216,40 @@ local function init_wm_binding()
     end)
 
     hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
-
-    -- multi monitor
     hs.hotkey.bind(mash, 'N', hs.grid.pushWindowNextScreen)
     hs.hotkey.bind(mash, 'P', hs.grid.pushWindowPrevScreen)
 
-    -- move windows
+    -- Window movement
     hs.hotkey.bind(mash, 'H', hs.grid.pushWindowLeft)
     hs.hotkey.bind(mash, 'J', hs.grid.pushWindowDown)
     hs.hotkey.bind(mash, 'K', hs.grid.pushWindowUp)
     hs.hotkey.bind(mash, 'L', hs.grid.pushWindowRight)
-    hs.hotkey.bind(mash, 'R', function()
-        rescue_windows()
-    end)
+    hs.hotkey.bind(mash, 'R', rescue_windows)
 
-    -- resize windows
+    -- Window resizing
     hs.hotkey.bind(mash, 'Y', hs.grid.resizeWindowThinner)
     hs.hotkey.bind(mash, 'U', hs.grid.resizeWindowShorter)
     hs.hotkey.bind(mash, 'I', hs.grid.resizeWindowTaller)
     hs.hotkey.bind(mash, 'O', hs.grid.resizeWindowWider)
 
-    -- Window Hints
-    -- hs.hotkey.bind(mash, '.', function() hs.hints.windowHints(hs.window.allWindows()) end)
     hs.hotkey.bind(mash, '.', hs.hints.windowHints)
 
-    -- Pomodoro key binding
-    hs.hotkey.bind(mash, '9', function()
-        pom_enable()
-    end)
-    hs.hotkey.bind(mash, '0', function()
-        pom_disable()
-    end)
-    hs.hotkey.bind(mash_shift, '0', function()
-        pom_reset_work()
-    end)
+    -- Pomodoro bindings
+    hs.hotkey.bind(mash, '9', pom_enable)
+    hs.hotkey.bind(mash, '0', pom_disable)
+    hs.hotkey.bind(mash_shift, '0', pom_reset_work)
 end
 
-local hide_workaround_list = {'Arc'}
-local ambiguous_apps = {{'notion', 'notion calendar'}, {'notion', 'notion mail'}}
-local function ambiguous_app_name(app_name, title)
-    -- Some application names are ambiguous - may be part of a different app name or vice versa.
-    -- this function disambiguates some known applications.
-    for _, tuple in ipairs(ambiguous_apps) do
-        if (app_name == tuple[1] and title == tuple[2]) or (app_name == tuple[2] and title == tuple[1]) then
-            return true
-        end
-    end
-
-    return false
-end
-
-local function toggle_app(app)
-    --[[
-    Toggles an application between focused and hidden states
-
-    This function will:
-    1. Hide the application if it's currently focused
-    2. Focus the application if it's not currently focused
-    3. Handle special-case applications (in hide_workaround_list) that require menu-based hiding
-
-    @param app (string) The name of the application to toggle
-    ]]
-
-    local front_app = hs.application.frontmostApplication()
-    local front_app_name = front_app:name()
-    local target_app_name = app
-
-    -- Convert both names to lowercase for comparison
-    local front_app_lower = front_app_name:lower()
-    local target_app_lower = target_app_name:lower()
-
-    -- Check if we're already on the app we want to toggle
-    local is_same_app = false
-
-    if not ambiguous_app_name(front_app_lower, target_app_lower) then
-        if string.find(front_app_lower, target_app_lower) or string.find(target_app_lower, front_app_lower) then
-            is_same_app = true
-        end
-    end
-
-    -- If we're on the target app, hide it (with special handling for workaround apps)
-    if is_same_app then
-        -- Check if current app needs special hide handling
-        for _, v in ipairs(hide_workaround_list) do
-            if string.lower(v) == front_app_lower then
-                front_app:selectMenuItem("Hide " .. front_app_name)
-                return
-            end
-        end
-
-        -- Normal hide for other apps
-        front_app:hide()
-        return
-    end
-
-    -- Not on the target app, so launch or focus it
-    hs.application.launchOrFocus(target_app_name)
-end
-
--- Init Launch applications bindings
+--[[
+  Initializes application shortcut keybindings
+]]
 local function init_app_binding()
-
-    -- Quick shortcuts to launch applications
     for key, app in pairs(appCuts) do
         hs.hotkey.bind(mash_app, key, function()
             toggle_app(app)
         end)
     end
 
-    -- Hyper shortcuts to launch applications
     for key, app in pairs(hyperAppCuts) do
         hs.hotkey.bind(HYPER, key, function()
             toggle_app(app)
@@ -288,58 +257,46 @@ local function init_app_binding()
     end
 end
 
+--[[
+  Initializes custom keybindings
+]]
 local function init_custom_binding()
-    -- Custom key bindings that do not match any of the above
     hs.hotkey.bind(HYPER, "=", function()
         toggle_app("Activity Monitor")
     end)
 end
 
--- local function increase_brightness()
---     -- Get the currently focused screen
---     local screen = hs.screen.mainScreen()
---     local brightness = hs.screen.getBrightness()
---     local target_brightness = math.min(brightness + 0.1, 1)
---     ha.screen.setBrightness(target_brightness)
+--[[
+  Initializes window watcher
+]]
+local function init_watcher()
+    watcher:subscribe(hs.window.filter.windowCreated, snap_to_grid)
+    watcher:subscribe(hs.window.filter.windowFocused, snap_to_grid)
+end
 
--- end
-
--- local function decrease_brightness()
---     local screen = hs.screen.mainScreen()
---     local brightness = hs.screen.getBrightness()
---     local target_brightness = math.max(brightness - 0.1, 0)
---     hs.screen.setBrightness(target_brightness)
--- end
-
--- local function init_brigheness()
---     hs.hotkey.bind(HYPER, "up", function()
---         increase_brightness()
---     end)
-
---     hs.hotkey.bind(HYPER, "down", function()Mi
---         decrease_brightness()
---     end)
--- end
-
--- WARNING: This is a VERY rough example and might not work as intended.
--- It demonstrates the general idea, but achieving rounded corners
--- will be significantly more complex.
-
+--[[
+  Main initialization function
+]]
 local function init()
+    -- Disable animation for speed
+    hs.window.animationDuration = 0
+
+    -- Configure grid
+    hs.grid.MARGINX = GRID_MARGIN_X
+    hs.grid.MARGINY = GRID_MARGIN_Y
+    hs.grid.GRIDWIDTH = GRID_WIDTH
+    hs.grid.GRIDHEIGHT = GRID_HEIGHT
 
     -- Load Spoons
     hs.loadSpoon("RoundedCorners")
     spoon.RoundedCorners:start()
 
+    -- Initialize all components
     init_wm_binding()
     init_app_binding()
     init_custom_binding()
     init_watcher()
-    --  init_brigheness() -- Doesn't work on my externl Dell display
-
-    -- start app launch watcher
-    -- hs.application.watcher.new(auto_tile):start()
-
 end
 
+-- Start the configuration
 init()
