@@ -347,7 +347,102 @@ function create_key_map(rows, cols)
     return mapping
 end
 
-function init_mode(screen, mode_config)
+local function create_grid_layout(screen, cols, rows, key_map, modifier)
+    local display_rect = screen:frame()
+    local w = display_rect.w
+    local h = display_rect.h
+    local x = display_rect.x
+    local y = display_rect.y
+
+    -- Calculate dimensions for a regular grid
+    local col_width = w / cols
+    local row_height = h / rows
+
+    log("Grid cell size:", col_width, "×", row_height)
+
+    local zones = {}
+
+    -- Create a zone for each grid cell
+    for r = 1, rows do
+        for c = 1, cols do
+            local zone_id = key_map[r][c] or (r .. "_" .. c)
+            local key = key_map[r][c]
+
+            if key then
+                local hotkey = modifier and key and {modifier, key}
+                log("Creating zone", zone_id, "with hotkey", key)
+
+                local zone_x = x + (c - 1) * col_width
+                local zone_y = y + (r - 1) * row_height
+
+                local zone = Zone.new(zone_id, hotkey)
+
+                -- Basic tile for this grid cell (default size)
+                zone:add_tile(zone_x, zone_y, col_width, row_height)
+
+                -- Full width for this row
+                if cols > 1 then
+                    zone:add_tile(x, zone_y, w, row_height)
+                end
+
+                -- Full height for this column
+                if rows > 1 then
+                    zone:add_tile(zone_x, y, col_width, h)
+                end
+
+                -- Cell-specific special tiles (like spanning multiple cells)
+                if c == 1 then -- Left column
+                    if r == 1 then -- Top-left
+                        zone:add_tile(x, y, col_width * 2, row_height * 2)
+                    elseif r == rows then -- Bottom-left
+                        zone:add_tile(x, y + (r - 2) * row_height, col_width * 2, row_height * 2)
+                    end
+                elseif c == cols then -- Right column
+                    if r == 1 then -- Top-right
+                        zone:add_tile(x + (c - 2) * col_width, y, col_width * 2, row_height * 2)
+                    elseif r == rows then -- Bottom-right
+                        zone:add_tile(x + (c - 2) * col_width, y + (r - 2) * row_height, col_width * 2, row_height * 2)
+                    end
+                end
+
+                -- Middle cell gets some special treatment for centered windows
+                if cols > 2 and rows > 2 and c == math.ceil(cols / 2) and r == math.ceil(rows / 2) then
+                    -- Center quarter
+                    zone:add_tile(x + w / 4, y + h / 4, w / 2, h / 2)
+                    -- Center third
+                    zone:add_tile(x + w / 3, y + h / 3, w / 3, h / 3)
+                    -- Full screen
+                    zone:add_tile(x, y, w, h)
+                end
+
+                zone:register()
+                table.insert(zones, zone)
+            end
+        end
+    end
+
+    -- Create special zone for center regardless of grid size
+    local center_key = "0"
+    local center_zone = Zone.new("center", {modifier, center_key})
+    center_zone:add_tile(x + w / 4, y + h / 4, w / 2, h / 2)
+    center_zone:add_tile(x + w / 6, y + h / 6, w * 2 / 3, h * 2 / 3)
+    center_zone:add_tile(x, y, w, h)
+    center_zone:register()
+    table.insert(zones, center_zone)
+
+    local mode = {
+        screen_id = screen:id(),
+        cols = cols,
+        rows = rows,
+        zones = zones
+    }
+
+    Tiler.modes[screen:id()] = mode
+    return mode
+end
+
+
+local function init_mode(screen, mode_config)
     -- Initialize a screen layout mode using a configuration
     -- mode_config can be either a string like "3x3" or a table with detailed settings
 
@@ -380,99 +475,6 @@ function init_mode(screen, mode_config)
     return create_grid_layout(screen, grid_cols, grid_rows, key_map, modifier)
 end
 
-function create_grid_layout(screen, cols, rows, key_map, modifier)
-    local display_rect = screen:frame()
-    local w = display_rect.w
-    local h = display_rect.h
-    local x = display_rect.x
-    local y = display_rect.y
-
-    -- Calculate dimensions for a regular grid
-    local col_width = w / cols
-    local row_height = h / rows
-
-    log("Grid cell size:", col_width, "×", row_height)
-
-    local zones = {}
-
-    -- Create a zone for each grid cell
-    for r = 1, rows do
-        for c = 1, cols do
-            local zone_id = key_map[r][c] or (r .. "_" .. c)
-            local key = key_map[r][c]
-
-            if key then
-                local hotkey = modifier and key and {modifier, key}
-                log("Creating zone", zone_id, "with hotkey", key)
-
-                local zone_x = x + (c-1) * col_width
-                local zone_y = y + (r-1) * row_height
-
-                local zone = Zone.new(zone_id, hotkey)
-
-                -- Basic tile for this grid cell (default size)
-                zone:add_tile(zone_x, zone_y, col_width, row_height)
-
-                -- Full width for this row
-                if cols > 1 then
-                    zone:add_tile(x, zone_y, w, row_height)
-                end
-
-                -- Full height for this column
-                if rows > 1 then
-                    zone:add_tile(zone_x, y, col_width, h)
-                end
-
-                -- Cell-specific special tiles (like spanning multiple cells)
-                if c == 1 then  -- Left column
-                    if r == 1 then  -- Top-left
-                        zone:add_tile(x, y, col_width*2, row_height*2)
-                    elseif r == rows then  -- Bottom-left
-                        zone:add_tile(x, y+(r-2)*row_height, col_width*2, row_height*2)
-                    end
-                elseif c == cols then  -- Right column
-                    if r == 1 then  -- Top-right
-                        zone:add_tile(x+(c-2)*col_width, y, col_width*2, row_height*2)
-                    elseif r == rows then  -- Bottom-right
-                        zone:add_tile(x+(c-2)*col_width, y+(r-2)*row_height, col_width*2, row_height*2)
-                    end
-                end
-
-                -- Middle cell gets some special treatment for centered windows
-                if cols > 2 and rows > 2 and c == math.ceil(cols/2) and r == math.ceil(rows/2) then
-                    -- Center quarter
-                    zone:add_tile(x + w/4, y + h/4, w/2, h/2)
-                    -- Center third
-                    zone:add_tile(x + w/3, y + h/3, w/3, h/3)
-                    -- Full screen
-                    zone:add_tile(x, y, w, h)
-                end
-
-                zone:register()
-                table.insert(zones, zone)
-            end
-        end
-    end
-
-    -- Create special zone for center regardless of grid size
-    local center_key = "0"
-    local center_zone = Zone.new("center", {modifier, center_key})
-    center_zone:add_tile(x + w/4, y + h/4, w/2, h/2)
-    center_zone:add_tile(x + w/6, y + h/6, w*2/3, h*2/3)
-    center_zone:add_tile(x, y, w, h)
-    center_zone:register()
-    table.insert(zones, center_zone)
-
-    local mode = {
-        screen_id = screen:id(),
-        cols = cols,
-        rows = rows,
-        zones = zones
-    }
-
-    Tiler.modes[screen:id()] = mode
-    return mode
-end
 
 --------------------------
 -- Initialization --
@@ -510,7 +512,7 @@ Tiler.layouts = {
     }
 }
 
-local function tiler_init()
+function Tiler_init()
     log("Initializing Tiler")
 
     -- Set up event listeners
@@ -560,4 +562,4 @@ function Tiler.configure_screen(screen_name, config)
 end
 
 -- Start the Tiler
-tiler_init()
+Tiler_init()
