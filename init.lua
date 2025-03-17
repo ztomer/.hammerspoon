@@ -19,19 +19,15 @@ local gridSnap = hs.grid.snap
 local appLaunchOrFocus = hs.application.launchOrFocus
 
 -- Pre-compile application lists for faster lookups
-local hide_workaround_apps = {
-    arc = true
-} -- lowercase map for O(1) lookups
+local hide_workaround_apps = {'Arc'} -- Apps that need menu-based hiding
 
--- Special cases where launch name differs from UI name (with both directions for complete matching)
-local app_name_pairs = {
-    ["bambustudio_bambu studio"] = true,
-    ["bambu studio_bambustudio"] = true,
-    ["notion_notion calendar"] = true,
-    ["notion calendar_notion"] = true,
-    ["notion_notion mail"] = true,
-    ["notion mail_notion"] = true
+-- Apps that require exact mapping between launch name and display name
+local special_app_mappings = {
+    ["bambustudio"] = "bambu studio" -- Launch name → Display name
 }
+
+-- Ambiguous app pairs that should not be considered matching
+local ambiguous_apps = {{'notion', 'notion calendar'}, {'notion', 'notion mail'}}
 
 -- Application shortcuts with direct lowercase mapping
 local appCuts = {
@@ -69,15 +65,22 @@ local watcher = hs.window.filter.new()
 -- ===== Utility Functions =====
 
 --[[
-  Checks if two app names are a known pair (either ambiguous or special cases)
+  Determines if two app names are ambiguous (one might be part of another)
 
-  @param name1 (string) First application name
-  @param name2 (string) Second application name
-  @return (boolean) true if the app names are a known pair, false otherwise
+  @param app_name (string) First application name to compare
+  @param title (string) Second application name to compare
+  @return (boolean) true if the app names are known to be ambiguous, false otherwise
 ]]
-local function is_app_name_pair(name1, name2)
-    local key = name1 .. "_" .. name2
-    return app_name_pairs[key] == true
+local function ambiguous_app_name(app_name, title)
+    -- Some application names are ambiguous - may be part of a different app name or vice versa.
+    -- this function disambiguates some known applications.
+    for _, tuple in ipairs(ambiguous_apps) do
+        if (app_name == tuple[1] and title == tuple[2]) or (app_name == tuple[2] and title == tuple[1]) then
+            return true
+        end
+    end
+
+    return false
 end
 
 --[[
@@ -86,38 +89,39 @@ end
   @param app (string) The name of the application to toggle
 ]]
 local function toggle_app(app)
+    -- Get information about currently focused app and target app
     local front_app = hs.application.frontmostApplication()
-    local front_app_name = front_app:name():lower()
-    local target_app_name = app:lower()
+    local front_app_name = front_app:name()
+    local front_app_lower = front_app_name:lower()
+    local target_app_name = app
+    local target_app_lower = app:lower()
 
-    -- Check if we're already on the app we want to toggle
-    local is_same_app = false
-
-    -- Check if they're a known pair (special cases like BambuStudio/Bambu Studio or ambiguous apps)
-    if is_app_name_pair(front_app_name, target_app_name) then
-        is_same_app = true
-    else
-        -- Standard check for app name match
-        if string.find(front_app_name, target_app_name, 1, true) or
-            string.find(target_app_name, front_app_name, 1, true) then
-            is_same_app = true
+    if target_app_lower ~= nil and front_app_lower ~= nil then
+        -- Handle apps that need special hiding via menu
+        for _, workaround_app in ipairs(hide_workaround_apps) do
+            if front_app_name == workaround_app then
+                front_app:selectMenuItem("Hide " .. front_app_name)
+                return
+            end
         end
-    end
 
-    if is_same_app then
-        -- Use direct lookup instead of iteration for apps that need special hiding
-        if hide_workaround_apps[front_app_name] then
-            front_app:selectMenuItem("Hide " .. front_app:name())
+        -- Handle special app mappings (launch name ≠ display name)
+        if special_app_mappings[target_app_lower] == front_app_lower or (target_app_lower == front_app_lower) then
+            front_app:hide()
             return
         end
 
-        -- Hide the application
-        front_app:hide()
-        return
+        -- Check both ways, the naming conventions of the title are not consistent
+        if not ambiguous_app_name(front_app_lower, target_app_lower) then
+            if string.find(front_app_lower, target_app_lower) or string.find(target_app_lower, front_app_lower) then
+                front_app:hide()
+                return
+            end
+        end
     end
 
     -- Not on target app, so launch or focus it
-    appLaunchOrFocus(app)
+    appLaunchOrFocus(target_app_name)
 end
 
 --[[
