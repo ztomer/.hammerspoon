@@ -1,288 +1,563 @@
--- Manual Zoner window manager
+-- Zone Tiler for Hammerspoon
+-- A window management system that allows defining zones on the screen
+-- and cycling window sizes within those zones
 require "homebrew"
 
--- Some design notes with no particular order:
--- Mode - Per resolution/ screen size Zones configuration
--- Zone - areas of the screen, each with set of tiles
--- Tile - pre-set size of windows for each zone
---
--- Windows are not automatically resized when switching modes manually
--- Windows are resized when switching modes automatically
--- Modes are selected automatically per screen identifier
--- (32" 4k will be width: 1/4, 1/2, 1/4,  heights: 1/2, 1/3, 2/3)
--- (14" will be widths 1/2, heights 1/2)
--- (vertical screen will be width: 1/2, 1/2, heights: 1/3, 2/3, 1 )
+-- Design notes:
+-- - Mode - Per resolution/screen size Zones configuration
+-- - Zone - areas of the screen, each with set of tiles
+-- - Tile - pre-set size of windows for each zone
 
--- Zone Objects, allows cycling between multiple tiles of different sizes
--- Store the windows in an LRU DLL, on keybinding to zone cycle between the windows in this Zone
-
--- References:
--- https://github.com/szymonkaliski/hhtwm/blob/master/hhtwm/init.lua
--- https://github.com/miromannino/miro-windows-manager/blob/master/MiroWindowsManager.spoon/init.lua
--- https://github.com/mogenson/PaperWM.spoon
--- https://thume.ca/2016/07/16/advanced-hackery-with-the-hammerspoon-window-manager/
--- https://livingissodear.com/posts/using-hammerspoon-for-window-management/
--- https://github.com/peterklijn/hammerspoon-shiftit (++)
--- https://github.com/ashfinal/awesome-hammerspoon/blob/master/Spoons/WinWin.spoon/init.lua (GC--)
-
--- https://github.com/AdamWagner/stackline (Good chache handling)
----- https://github.com/AdamWagner/stackline/blob/main/stackline/stackline.lua
--- https://github.com/jpf/Zoom.spoon/blob/main/init.lua (zoom plugin)
--- https://github.com/szymonkaliski/hhtwm
--- https://www.hammerspoon.org/Spoons/ArrangeDesktop.html
--- https://www.hammerspoon.org/Spoons/RoundedCorners.html
--- https://www.hammerspoon.org/Spoons/WindowSigils.html
--- https://github.com/dmgerman/dmg-hammerspoon/blob/f8da75d121c37df40c0971336eb3f67c73d67187/dmg.spoon/init.lua#L115-L224
---- Callbacks (cool trick - store the id of the current window in a global, if destroyed or closed, remove the global
--- value from the cache and update the currently focused winid to be the global)
--- https://github.com/mobily/awesome-keys
-
--- local namespace
+-- Define the Tiler namespace
 local Tiler = {
     window_id2zone_id = {}, -- Maps window to zone_id
     zone_id2zone = {}, -- Maps zone_id to zone object
     modes = {}, -- All possible monitor modes
-    windows = nil -- handler for windows events
+    windows = nil, -- handler for windows events
+    debug = true, -- Enable debug logging
+    version = "1.0.0"
 }
 
-Tile = {
-    topleft_x = 0,
-    topleft_y = 0,
-    width = 0,
-    height = 0
-}
+-- Debug logging function
+local function log(...)
+    if Tiler.debug then
+        print("[TilerDebug]", ...)
+    end
+end
 
-function Tile:new(topleft_x, topleft_y, width, height)
-    -- Deines tile - a sub location in a Zone
+--------------------------
+-- Tile Class Definition --
+--------------------------
+
+-- Tile class - represents a specific window position and size
+local Tile = {}
+Tile.__index = Tile
+
+function Tile.new(topleft_x, topleft_y, width, height)
+    local self = setmetatable({}, Tile)
     self.topleft_x = topleft_x
     self.topleft_y = topleft_y
     self.width = width
     self.height = height
+    return self
 end
 
-Zone = {
-    -- A Zone can contain multiple tiles, which defines the possible windows sizes
-    -- for this Zone
-    _id = nil, -- unique identifer for the Zone
-    _hotkey = nil, -- hotkey to activate this Zone
-    _tiles = {}, -- possible tiles attached to the Zone
-    _tiles_num = 0, -- number of tiles attached to the Zone
-    _window_id2tile_idx = {} -- map between window_id and active tile idx
+function Tile:toString()
+    return string.format("Tile(x=%d, y=%d, w=%d, h=%d)",
+        self.topleft_x, self.topleft_y, self.width, self.height)
+end
 
-}
+--------------------------
+-- Zone Class Definition --
+--------------------------
 
--- map between tile and window
+-- Zone class - represents an area of the screen with multiple possible tile configurations
+local Zone = {}
+Zone.__index = Zone
 
-function Zone:new(id, hotkey)
+function Zone.new(id, hotkey)
+    local self = setmetatable({}, Zone)
     self._id = id
     self._hotkey = hotkey
+    self._tiles = {}
+    self._tiles_num = 0
+    self._window_id2tile_idx = {}
+    self._active_window_id = nil
+    self._current_tile_idx = 0
+    return self
 end
 
-function Zone:tile_add(topleft_x, topleft_y, width, height)
-    -- Add tiles - all tiles MUST be added on init
-    self._tiles[self._tiles_num] = new
-    tile(topleft_x, topleft_y, width, height)
+function Zone:toString()
+    return string.format("Zone(id=%s, tiles=%d)", self._id, self._tiles_num)
+end
 
-    self.tiles_num = self.tiles_num + 1
+function Zone:add_tile(topleft_x, topleft_y, width, height)
+    -- Add a new tile configuration to this zone
+    self._tiles[self._tiles_num] = Tile.new(topleft_x, topleft_y, width, height)
+    self._tiles_num = self._tiles_num + 1
+    log("Added tile to zone", self._id, "total tiles:", self._tiles_num)
+    return self
 end
 
 function Zone:tile_rotate(window_id)
-    -- Return the next tile of the Zone
-    local tile_idx = self._window_id2tile_idx[window_id] + 1 % self._tiles_num
-    self.windows_tile[window_id] = tile_idx
+    -- Rotate to the next tile configuration for a window
+    if not self._window_id2tile_idx[window_id] then
+        self._window_id2tile_idx[window_id] = 0
+        return 0
+    end
+
+    -- Calculate next tile index with wrap-around
+    local next_idx = (self._window_id2tile_idx[window_id] + 1) % self._tiles_num
+    self._window_id2tile_idx[window_id] = next_idx
+    log("Rotated window", window_id, "to tile index", next_idx, "in zone", self._id)
+    return next_idx
 end
 
-function Zone:tile_get_curr(window_id)
-    -- Get current window position
+function Zone:get_current_tile(window_id)
+    -- Get the current tile for a window
     local tile_idx = self._window_id2tile_idx[window_id]
+    if not tile_idx then
+        return nil
+    end
     return self._tiles[tile_idx]
 end
 
 function Zone:add_window(window_id)
-    -- Add a window to the Zone
+    -- Add a window to this zone (assigns to the first tile by default)
     if self._window_id2tile_idx[window_id] ~= nil then
+        log("Window", window_id, "already in zone", self._id)
         return
     end
 
-    -- Map a window to a zone, and window to tile (starting with default size (idx 0))
+    -- Map the window to this zone and set first tile (index 0)
     self._window_id2tile_idx[window_id] = 0
     Tiler.window_id2zone_id[window_id] = self._id
+    log("Added window", window_id, "to zone", self._id)
 end
 
 function Zone:remove_window(window_id)
-    -- Remove window from the Zone
+    -- Remove a window from this zone
     if self._window_id2tile_idx[window_id] == nil then
+        log("Window", window_id, "not in zone", self._id)
         return
     end
+
+    log("Removing window", window_id, "from zone", self._id)
     self._window_id2tile_idx[window_id] = nil
     Tiler.window_id2zone_id[window_id] = nil
 end
 
--- TODO: Move windows
--- TODO: map active windows to tiles
-
 function Zone:resize_window(window_id)
-    -- Get current Zone and tile
-    local tile = self._window_id2tile_idx[window_id]
+    -- Resize a window based on its current tile configuration
+    local tile_idx = self._window_id2tile_idx[window_id]
+    if not tile_idx then
+        log("Cannot resize window", window_id, "- not in zone", self._id)
+        return false
+    end
 
-    -- Resize the window
+    local tile = self._tiles[tile_idx]
+    if not tile then
+        log("Invalid tile index", tile_idx, "for window", window_id)
+        return false
+    end
 
-    -- If the target Zone and the current Zone are not the same,
-    -- remove the window id from the current Zone, add to the target Zone,
-    -- set the tile inde to 0 and move the window to the tile coordinates
-    -- hw.window:setFrameInScreenBounds
-    -- hs.window:setSize(size)
-    -- hs.window:setTopLeft(point)
+    local window = hs.window.get(window_id)
+    if not window then
+        log("Cannot find window with ID", window_id)
+        return false
+    end
 
+    -- Apply the tile dimensions to the window
+    log("Resizing window", window_id, "to", tile:toString())
+    window:setFrame({
+        x = tile.topleft_x,
+        y = tile.topleft_y,
+        w = tile.width,
+        h = tile.height
+    })
+
+    return true
 end
 
-function activate_move_zone(zone_id)
-    -- Activates a move_zone operation on the focused window
+-- Register the zone with the Tiler
+function Zone:register()
+    Tiler.zone_id2zone[self._id] = self
+    log("Registered zone", self._id)
 
-    -- Also move window
-    -- Get focused window id
-    -- local app = hs.application.frontmostApplication()
+    -- Set up the hotkey for this zone
+    if self._hotkey then
+        hs.hotkey.bind(self._hotkey[1], self._hotkey[2], function()
+            activate_move_zone(self._id)
+        end)
+        log("Bound hotkey", self._hotkey[1], self._hotkey[2], "to zone", self._id)
+    end
+
+    return self
+end
+
+--------------------------
+-- Core Functions --
+--------------------------
+
+function activate_move_zone(zone_id)
+    -- Handle moving a window to a zone or cycling its tile if already in the zone
+    log("Activating zone", zone_id)
+
+    -- Get focused window
     local win = hs.window.focusedWindow()
+    if not win then
+        log("No focused window")
+        return
+    end
+
     local win_id = win:id()
 
-    -- Get Zone, get tile (can be empty)
-    local window_zone_id, window_tile_idx = Tiler.window_id2zone_id[win_id]
-    local zone = Tiler.zone_id2zone(zone_id)
+    -- Get the window's current zone
+    local current_zone_id = Tiler.window_id2zone_id[win_id]
+    local zone = Tiler.zone_id2zone[zone_id]
 
-    if zone_id == nil then
-        -- if the target Zone is empty, add the window, resize, and done
-        zone.add_window(win_id)
-    elseif zone_id ~= window_zone_id then
-        -- If moving between Zones, remove from the first zone and add to the second
-        local source_zone = Tiler.zone_id2zone(window_zone_id)
-        source_zone.remove_window(window_zone_id)
-        Zone.add_window(win_id)
-    else
-        -- Multiple calls to the same window on the same Zone, rotate between tiles
-        Zone.tile_rotate(win_id)
+    if not zone then
+        log("Zone", zone_id, "not found")
+        return
     end
-    Zone.resize_window(win_id)
 
+    if not current_zone_id then
+        -- Window is not in any zone, add it to the target zone
+        log("Adding window", win_id, "to zone", zone_id)
+        zone:add_window(win_id)
+    elseif current_zone_id ~= zone_id then
+        -- Window is in a different zone, move it to the target zone
+        local source_zone = Tiler.zone_id2zone[current_zone_id]
+        log("Moving window", win_id, "from zone", current_zone_id, "to zone", zone_id)
+
+        if source_zone then
+            source_zone:remove_window(win_id)
+        end
+
+        zone:add_window(win_id)
+    else
+        -- Window already in this zone, rotate through tiles
+        log("Rotating window", win_id, "in zone", zone_id)
+        zone:tile_rotate(win_id)
+    end
+
+    -- Apply the new tile dimensions
+    zone:resize_window(win_id)
 end
 
 function activate_window_event(win_obj, appName, event_name)
-    -- The callback is generic and handles all subscribed events
-    -- Remove a window ID when an application is terminated or a window is closed
-    if event_name == "windowDestroyed" then
+    -- Handle window events (destruction, creation, etc.)
+    log("Window event:", event_name, "for app:", appName)
+
+    if event_name == "windowDestroyed" and win_obj then
         local win_id = win_obj:id()
-        local zone_id = Tiler.window_id2zone_id()
-        local zone_obj = Tiler.zone_id2zone[zone_id]
-        zone_obj.remove_window(win_id)
+        local zone_id = Tiler.window_id2zone_id[win_id]
+
+        if zone_id then
+            local zone = Tiler.zone_id2zone[zone_id]
+            if zone then
+                log("Window destroyed, removing from zone:", zone_id)
+                zone:remove_window(win_id)
+            end
+        end
     end
 end
 
-function activate_window_display_moved()
-    -- TODO: update the window caches when moving between hs.midi:displayName()
+local function activate_window_display_moved()
+    -- Handle windows when displays are changed
+    log("Screen configuration changed")
+
+    -- Clear existing modes since screen positions may have changed
+    Tiler.modes = {}
+
+    for _, screen in pairs(hs.screen.allScreens()) do
+        local screen_id = screen:id()
+        local screen_name = screen:name()
+        log("Processing screen:", screen_name, "ID:", screen_id)
+
+        -- Check for custom configuration for this specific screen
+        local mode_config
+        if Tiler.layouts.custom[screen_name] then
+            log("Using custom layout for screen:", screen_name)
+            mode_config = Tiler.layouts.custom[screen_name]
+        else
+            -- Use default configuration based on screen size
+            local mode_type = get_mode_for_screen(screen)
+            log("Using default layout:", mode_type)
+            mode_config = mode_type
+        end
+
+        -- Initialize mode for this screen
+        init_mode(screen, mode_config)
+    end
+
+    -- Resize windows that are assigned to zones
+    -- Use a delayed callback to ensure windows have settled after display change
+    hs.timer.doAfter(0.5, function()
+        for window_id, zone_id in pairs(Tiler.window_id2zone_id) do
+            local zone = Tiler.zone_id2zone[zone_id]
+            if zone then
+                log("Resizing window", window_id, "in zone", zone_id)
+                zone:resize_window(window_id)
+            end
+        end
+    end)
 end
 
-local function init_mode_3(screen)
-    -- Size 3 superset - right cluster
-    -- Note this should be one per screen, so bad implementation
-    -- Overall layout:
-    -- [Y--|U-----|I--]
-    -- [H--|J-----|K--]
-    -- [N--|M-----|,--]
-    -- TODO: Should be done per screen
-    -- TODO: This should be read from a config file
+local function get_mode_for_screen(screen)
+    -- Determine which layout mode to use based on screen properties
+    local screen_frame = screen:frame()
+    local width = screen_frame.w
+    local height = screen_frame.h
 
+    log("Screen dimensions:", width, "x", height)
+
+    -- Apply different grids based on screen size
+    if width >= 3840 and height >= 2160 then
+        return "4x3"  -- 4K monitors get a 4×3 grid
+    elseif width >= 2560 then
+        return "3x3"  -- Wide monitors get a 3×3 grid
+    elseif width >= 1920 and height >= 1080 then
+        return "3x2"  -- Full HD gets a 3×2 grid
+    else
+        return "2x2"  -- Smaller screens get a simple 2×2 grid
+    end
+end
+
+--------------------------
+-- Mode Initialization --
+--------------------------
+
+-- Define keyboard layout for auto-mapping
+local keyboard_layouts = {
+    -- Define rows of keys for easy grid mapping
+    number_row = {"6", "7", "8", "9", "0"},
+    top_row = {"y", "u", "i", "o", "p"},
+    home_row = {"h", "j", "k", "l", ";"},
+    bottom_row = {"n", "m", ",", ".", "/"}
+}
+
+function create_key_map(rows, cols)
+    -- Creates a 2D array of key mappings based on the keyboard layout
+    -- rows: number of rows in the grid
+    -- cols: number of columns in the grid
+
+    local mapping = {}
+    local available_rows = {
+        keyboard_layouts.top_row,
+        keyboard_layouts.home_row,
+        keyboard_layouts.bottom_row,
+        keyboard_layouts.number_row
+    }
+
+    -- Ensure we don't exceed available keys
+    rows = math.min(rows, #available_rows)
+    cols = math.min(cols, 5) -- Max 5 columns from each row
+
+    log("Creating key map for", rows, "×", cols, "grid")
+
+    for r = 1, rows do
+        mapping[r] = {}
+        local key_row = available_rows[r]
+        for c = 1, cols do
+            mapping[r][c] = key_row[c]
+        end
+    end
+
+    return mapping
+end
+
+function init_mode(screen, mode_config)
+    -- Initialize a screen layout mode using a configuration
+    -- mode_config can be either a string like "3x3" or a table with detailed settings
+
+    local grid_cols, grid_rows, key_map, modifier
+
+    if type(mode_config) == "string" then
+        -- Parse a simple configuration like "3x3"
+        local cols, rows = mode_config:match("(%d+)x(%d+)")
+        grid_cols = tonumber(cols) or 3
+        grid_rows = tonumber(rows) or 3
+        key_map = create_key_map(grid_rows, grid_cols)
+        modifier = {"ctrl", "cmd"}
+    elseif type(mode_config) == "table" then
+        -- Use detailed configuration
+        grid_cols = mode_config.cols or 3
+        grid_rows = mode_config.rows or 3
+        key_map = mode_config.key_map or create_key_map(grid_rows, grid_cols)
+        modifier = mode_config.modifier or {"ctrl", "cmd"}
+    else
+        -- Default to 3x3 grid
+        grid_cols = 3
+        grid_rows = 3
+        key_map = create_key_map(grid_rows, grid_cols)
+        modifier = {"ctrl", "cmd"}
+    end
+
+    log("Initializing", grid_cols, "×", grid_rows, "grid for screen", screen:name())
+
+    -- Create the grid layout
+    return create_grid_layout(screen, grid_cols, grid_rows, key_map, modifier)
+end
+
+function create_grid_layout(screen, cols, rows, key_map, modifier)
     local display_rect = screen:frame()
     local w = display_rect.w
     local h = display_rect.h
     local x = display_rect.x
     local y = display_rect.y
 
-    -- Y width is the first quarter, heights are half, third, two thirds
-    local quarter_screen = w // 4
-    local half_screen = w // 2
-    local half_height = h // 2
-    local two_third_height = (h * 2) // 3
-    local third_height = h // 3
-    local y_zone = Zone:new("Y", {"ctrl", "cmd", "y"})
-    y_zone.tile_add(x, y, quarter_screen, half_height) -- Top half
-    y_zone.tile_add(x, y, quarter_screen, two_third_height) -- Top 2/3
-    y_zone.tile_add(x, y, quarter_screen, third_height) -- Top third
+    -- Calculate dimensions for a regular grid
+    local col_width = w / cols
+    local row_height = h / rows
 
-    local h_zone = Zone:new("H", {"ctrl", "cmd", "u"})
-    h_zone.tile_add(x, y, quarter_screen, h) -- full left third
-    h_zone.tile_add(x, y + third_height + 1, quarter_screen, third_height)
+    log("Grid cell size:", col_width, "×", row_height)
 
-    local n_zone = Zone:new("N", {"ctrl", "cmd", "i"})
-    n_zone.tile_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
-    n_zone.tile_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
-    n_zone.tile_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
+    local zones = {}
 
-    -- Middle set, half of the screen
-    x = quarter_screen + 1
-    w = half_screen
-    local u_zone = Zone:new("U", {"ctrl", "cmd", "h"})
-    u_zone.tile_add(x, y, half_screen, half_height) -- middle half
-    u_zone.tile_add(x, y, half_screen, two_third_height) -- Top 2/3
-    u_zone.tile_add(x, y, half_screen, third_height)
+    -- Create a zone for each grid cell
+    for r = 1, rows do
+        for c = 1, cols do
+            local zone_id = key_map[r][c] or (r .. "_" .. c)
+            local key = key_map[r][c]
 
-    local j_zone = Zone:new("J", {"ctrl", "cmd", "j"})
-    j_zone.tile_add(x, y, half_screen, h) -- Full middle
-    j_zone.tile_add(x, y + third_height + 1, third_height)
-    local m_Zone = Zone:new("M", {"ctrl", "cmd", "k"})
-    n_zone.tile_add(x, y + half_height + 1, half_screen, half_height) -- Bottom half
-    n_zone.tile_add(x, y + third_height + 1, half_screen, two_third_height) -- Bottom 2/3
-    n_zone.tile_add(x, y + two_third_height + 1, half_screen, third_height) -- Bottom third
+            if key then
+                local hotkey = modifier and key and {modifier, key}
+                log("Creating zone", zone_id, "with hotkey", key)
 
-    -- Move to last quarter
-    w = x + w + 1
-    w = quarter_screen
+                local zone_x = x + (c-1) * col_width
+                local zone_y = y + (r-1) * row_height
 
-    local i_zone = Zone:new("I", {"ctrl", "cmd", "n"})
-    i_zone.tile_add(x, y, quarter_screen, half_height) -- Top half
-    i_zone.tile_add(x, y, quarter_screen, two_third_height) -- Top 2/3
-    i_zone.tile_add(x, y, quarter_screen, third_height) -- Top third
+                local zone = Zone.new(zone_id, hotkey)
 
-    local k_zone = Zone:new("K", {"ctrl", "cmd", "m"})
-    k_zone.tile_add(x, y, quarter_screen, h) -- full left third
-    k_zone.tile_add(x, y + third_height + 1, quarter_screen, third_height)
+                -- Basic tile for this grid cell (default size)
+                zone:add_tile(zone_x, zone_y, col_width, row_height)
 
-    local m1_zone = Zone:new("M1", {"ctrl", "cmd", ","})
-    m1_zone.tile_add(x, y + half_height + 1, quarter_screen, half_height) -- Bottom half
-    m1_zone.tile_add(x, y + third_height + 1, quarter_screen, two_third_height) -- Bottom 2/3
-    m1_zone.tile_add(x, y + two_third_height + 1, quarter_screen, third_height) -- Bottom third
+                -- Full width for this row
+                if cols > 1 then
+                    zone:add_tile(x, zone_y, w, row_height)
+                end
 
-    local mode_3 = {y_zone, u_zone, i_zone, --
-    h_zone, j_zone, k_zone, --
-    n_zone, m_zone, m1_zone --
+                -- Full height for this column
+                if rows > 1 then
+                    zone:add_tile(zone_x, y, col_width, h)
+                end
+
+                -- Cell-specific special tiles (like spanning multiple cells)
+                if c == 1 then  -- Left column
+                    if r == 1 then  -- Top-left
+                        zone:add_tile(x, y, col_width*2, row_height*2)
+                    elseif r == rows then  -- Bottom-left
+                        zone:add_tile(x, y+(r-2)*row_height, col_width*2, row_height*2)
+                    end
+                elseif c == cols then  -- Right column
+                    if r == 1 then  -- Top-right
+                        zone:add_tile(x+(c-2)*col_width, y, col_width*2, row_height*2)
+                    elseif r == rows then  -- Bottom-right
+                        zone:add_tile(x+(c-2)*col_width, y+(r-2)*row_height, col_width*2, row_height*2)
+                    end
+                end
+
+                -- Middle cell gets some special treatment for centered windows
+                if cols > 2 and rows > 2 and c == math.ceil(cols/2) and r == math.ceil(rows/2) then
+                    -- Center quarter
+                    zone:add_tile(x + w/4, y + h/4, w/2, h/2)
+                    -- Center third
+                    zone:add_tile(x + w/3, y + h/3, w/3, h/3)
+                    -- Full screen
+                    zone:add_tile(x, y, w, h)
+                end
+
+                zone:register()
+                table.insert(zones, zone)
+            end
+        end
+    end
+
+    -- Create special zone for center regardless of grid size
+    local center_key = "0"
+    local center_zone = Zone.new("center", {modifier, center_key})
+    center_zone:add_tile(x + w/4, y + h/4, w/2, h/2)
+    center_zone:add_tile(x + w/6, y + h/6, w*2/3, h*2/3)
+    center_zone:add_tile(x, y, w, h)
+    center_zone:register()
+    table.insert(zones, center_zone)
+
+    local mode = {
+        screen_id = screen:id(),
+        cols = cols,
+        rows = rows,
+        zones = zones
     }
 
-    return mode_3
+    Tiler.modes[screen:id()] = mode
+    return mode
 end
 
-function init_listener()
-    -- Initialize event filter
+--------------------------
+-- Initialization --
+--------------------------
+
+local function init_listeners()
+    -- Initialize event listeners
+    log("Initializing event listeners")
+
+    -- Window event filter
     Tiler.windows = hs.window.filter.new()
     Tiler.windows:setDefaultFilter{}
     Tiler.windows:setSortOrder(hs.window.filter.sortByFocusedLast)
 
-    -- subscribe to a Window closed event
+    -- Subscribe to window events
     Tiler.windows:subscribe(hs.window.filter.windowDestroyed, activate_window_event)
 
+    -- Screen change events
+    hs.screen.watcher.new(activate_window_display_moved):start()
 end
 
-function tiler_init()
-    -- Create Zones supersets (1, 2, 3 tiles) (modes)
-    -- TODO (let's start with size three)
-    local main_screen = hs.screen.mainScreen()
-    local main_screen_name = screen.name()
-    print("screen name:", main_screen_name) -- DEBUG
+-- User-configurable layouts
+Tiler.layouts = {
+    -- Default layouts for different screen types
+    default = {
+        small = "2x2",
+        medium = "3x2",
+        large = "3x3",
+        extra_large = "4x3"
+    },
 
-    -- Add tiles to Zones, map hotkeys,
-    init_listener()
-    local mode_3 = init_mode_3(main_screen)
-    Tile.modes[3] = mode_3
+    -- Custom layouts for specific screens (by name)
+    custom = {
+        -- Example: ["LG UltraFine"] = { cols = 4, rows = 3, modifier = {"ctrl", "alt"} }
+    }
+}
 
-    -- listen on window destruction for cleanups (can be very problematic if ids are recycled)
+local function tiler_init()
+    log("Initializing Tiler")
 
-    -- listen on monitor switches
+    -- Set up event listeners
+    init_listeners()
+
+    -- Initialize layouts for all screens
+    for _, screen in pairs(hs.screen.allScreens()) do
+        local screen_name = screen:name()
+        log("Configuring screen:", screen_name)
+
+        -- Check for custom configuration for this specific screen
+        local mode_config
+        if Tiler.layouts.custom[screen_name] then
+            log("Using custom layout for screen:", screen_name)
+            mode_config = Tiler.layouts.custom[screen_name]
+        else
+            -- Use default configuration based on screen size
+            local mode_type = get_mode_for_screen(screen)
+            log("Using default layout:", mode_type)
+            mode_config = mode_type
+        end
+
+        init_mode(screen, mode_config)
+    end
+
+    -- Add keyboard shortcut to toggle debug mode
+    hs.hotkey.bind({"ctrl", "cmd", "shift"}, "D", function()
+        Tiler.debug = not Tiler.debug
+        log("Debug mode:", Tiler.debug ? "enabled" : "disabled")
+    end)
+
+    log("Tiler initialization complete")
 end
 
+-- Utility function to configure a custom layout for a screen
+function Tiler.configure_screen(screen_name, config)
+    log("Setting custom configuration for screen:", screen_name)
+    Tiler.layouts.custom[screen_name] = config
+
+    -- If the screen is currently connected, apply the config immediately
+    for _, screen in pairs(hs.screen.allScreens()) do
+        if screen:name() == screen_name then
+            init_mode(screen, config)
+            break
+        end
+    end
+end
+
+-- Start the Tiler
+tiler_init()
