@@ -96,7 +96,22 @@ local function toggle_app(app)
     local target_app_name = app
     local target_app_lower = app:lower()
 
-    if target_app_lower ~= nil and front_app_lower ~= nil then
+    -- Check if the front app is the one we're trying to toggle
+    local switching_to_same_app = false
+
+    -- Handle special app mappings (launch name ≠ display name)
+    if special_app_mappings[target_app_lower] == front_app_lower or (target_app_lower == front_app_lower) then
+        switching_to_same_app = true
+    end
+
+    -- Check if they're related apps with different naming conventions
+    if not ambiguous_app_name(front_app_lower, target_app_lower) then
+        if string.find(front_app_lower, target_app_lower) or string.find(target_app_lower, front_app_lower) then
+            switching_to_same_app = true
+        end
+    end
+
+    if switching_to_same_app then
         -- Handle apps that need special hiding via menu
         for _, workaround_app in ipairs(hide_workaround_apps) do
             if front_app_name == workaround_app then
@@ -105,19 +120,9 @@ local function toggle_app(app)
             end
         end
 
-        -- Handle special app mappings (launch name ≠ display name)
-        if special_app_mappings[target_app_lower] == front_app_lower or (target_app_lower == front_app_lower) then
-            front_app:hide()
-            return
-        end
-
-        -- Check both ways, the naming conventions of the title are not consistent
-        if not ambiguous_app_name(front_app_lower, target_app_lower) then
-            if string.find(front_app_lower, target_app_lower) or string.find(target_app_lower, front_app_lower) then
-                front_app:hide()
-                return
-            end
-        end
+        -- Normal hiding
+        front_app:hide()
+        return
     end
 
     -- Not on target app, so launch or focus it
