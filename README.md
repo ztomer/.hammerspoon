@@ -10,6 +10,9 @@ A powerful window management system that allows defining zones on the screen and
 - **Intuitive Keyboard Shortcuts**: Quickly position and resize windows with keyboard shortcuts
 - **Customizable Configurations**: Easily tailor layouts to your specific needs
 - **Cycle Through Positions**: Quickly cycle a window through different preset sizes
+- **Window Margins**: Add configurable spacing between windows and screen edges
+- **Negative Coordinate Support**: Properly handle multi-monitor setups with negative screen coordinates
+- **Robust State Tracking**: Maintain window positions even when rapidly switching between zones
 
 ## Installation
 
@@ -75,9 +78,62 @@ The tiler automatically detects your screen characteristics and applies the most
 
 ## Customization
 
+### Basic Configuration
+
+Here's a complete configuration example for your `init.lua`:
+
+```lua
+-- Define configuration for the tiler
+local tiler_config = {
+    debug = true,                  -- Enable debug logging
+    modifier = {"ctrl", "cmd"},    -- Set default modifier keys
+
+    -- Window margin settings
+    margins = {
+        enabled = true,            -- Enable margins between windows
+        size = 8,                  -- Use 8 pixels for margins
+        screen_edge = true         -- Apply margins to screen edges too
+    },
+
+    -- Custom layouts for specific screens
+    layouts = {
+        custom = {
+            ["DELL U3223QE"] = {
+                cols = 4,
+                rows = 3
+            },
+            ["LG IPS QHD"] = {
+                cols = 1,
+                rows = 3
+            }
+        }
+    },
+
+    -- Screen-specific zone configurations
+    zone_configs_by_screen = {
+        ["LG IPS QHD"] = {
+            -- Top section
+            ["y"] = {"a1", "a1:a2"},
+
+            -- Middle section
+            ["h"] = {"a2", "a1:a3"},
+
+            -- Bottom section
+            ["n"] = {"a3", "a2:a3"},
+
+            -- Center key
+            ["0"] = {"a1:a3", "a2", "a1"}
+        }
+    }
+}
+
+-- Start tiler with the configuration
+tiler.start(tiler_config)
+```
+
 ### Custom Screen Layouts
 
-You can define custom layouts for specific screens in your `init.lua`:
+You can define custom layouts for specific screens:
 
 ```lua
 -- Define a custom layout for your monitor
@@ -91,11 +147,40 @@ tiler.layouts.custom["DELL U3223QE"] = { cols = 4, rows = 3 }
 tiler.config.modifier = {"ctrl", "alt"}
 ```
 
+### Configure Window Margins
+
+```lua
+-- Configure window margins
+tiler.config.margins = {
+    enabled = true,     -- Turn margins on/off
+    size = 10,          -- Margin size in pixels
+    screen_edge = false -- Don't apply margins to screen edges
+}
+```
+
 ### Custom Zone Configurations
 
 ```lua
 -- Customize the behavior of a specific key
 tiler.configure_zone("y", { "a1:a2", "a1", "a1:a3" })
+```
+
+### Screen-Specific Zone Configurations
+
+For different behaviors on different monitors:
+
+```lua
+-- Define custom zones for a portrait monitor
+local portrait_zones = {
+    ["y"] = {"a1", "a1:a2"},  -- Top section
+    ["h"] = {"a2", "a1:a3"},  -- Middle section
+    ["n"] = {"a3", "a2:a3"}   -- Bottom section
+}
+
+-- Apply to specific screen
+tiler.zone_configs_by_screen = {
+    ["LG IPS QHD"] = portrait_zones
+}
 ```
 
 ## Grid Coordinate System
@@ -126,6 +211,8 @@ If windows are not positioning correctly:
 1. **Enable Debug Mode**: Add `tiler.config.debug = true` to your `init.lua`
 2. **Force Screen Detection**: Add a custom layout for your specific screen
 3. **Reload Configuration**: Use `Cmd+Ctrl+Shift+R` if you've added the hot reload shortcut
+4. **Check Multi-Monitor Setup**: For monitors with negative coordinates, ensure you're using the latest version with negative coordinate support
+5. **Check State Tracking**: If windows don't cycle correctly when rapidly switching between zones, ensure you have the latest state tracking fixes
 
 ## Advanced Usage
 
@@ -152,6 +239,28 @@ tiler.layouts.custom["My Special Monitor"] = {
 }
 ```
 
+### Debug Helper Functions
+
+For troubleshooting multi-monitor setups:
+
+```lua
+-- Helper function to display screen information
+hs.hotkey.bind({"ctrl", "alt", "cmd"}, "I", function()
+    local output = {"Screen Information:"}
+
+    for i, screen in ipairs(hs.screen.allScreens()) do
+        local frame = screen:frame()
+        local name = screen:name()
+
+        table.insert(output, string.format("\nScreen %d: %s", i, name))
+        table.insert(output, string.format("Frame: x=%.1f, y=%.1f, w=%.1f, h=%.1f",
+                                         frame.x, frame.y, frame.w, frame.h))
+    end
+
+    hs.alert.show(table.concat(output, "\n"), 5)
+end)
+```
+
 ## Credits
 
-Zone Tiler was created for use with [Hammerspoon](https://www.hammerspoon.org/).
+Zone Tiler was created for use with [Hammerspoon](https://www.hammerspoon.org/)

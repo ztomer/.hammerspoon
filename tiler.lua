@@ -79,7 +79,12 @@ local tiler = {
     -- Settings that can be modified by the user
     config = {
         debug = true, -- Enable debug logging
-        modifier = {"ctrl", "cmd"} -- Default hotkey modifier
+        modifier = {"ctrl", "cmd"}, -- Default hotkey modifier
+        margins = {
+            enabled = true, -- Whether to use margins
+            size = 5, -- Default margin size in pixels
+            screen_edge = true -- Whether to apply margins to screen edges
+        }
     },
 
     -- Internal state
@@ -483,28 +488,88 @@ local function calculate_tile_position(screen, col_start, row_start, col_end, ro
     local x = frame.x
     local y = frame.y
 
+    -- Get margin settings
+    local use_margins = tiler.config.margins.enabled
+    local margin_size = tiler.config.margins.size or 0
+    local screen_edge_margins = tiler.config.margins.screen_edge
+
+    -- Add debugging for portrait monitors
+    local is_portrait = h > w
+    if is_portrait then
+        debug_log(string.format("Portrait monitor detected: %s (%.1f x %.1f)", screen:name(), w, h))
+    end
+
     -- Calculate grid cell dimensions
     local col_width = w / cols
     local row_height = h / rows
 
-    -- Calculate absolute position and size
+    -- Calculate absolute position and size without margins
     local tile_x = x + (col_start - 1) * col_width
     local tile_y = y + (row_start - 1) * row_height
     local tile_width = (col_end - col_start + 1) * col_width
     local tile_height = (row_end - row_start + 1) * row_height
 
+    -- Apply margins if enabled
+    if use_margins then
+        -- Apply screen edge margins if enabled
+        if screen_edge_margins then
+            -- Left edge
+            if col_start == 1 then
+                tile_x = tile_x + margin_size
+                tile_width = tile_width - margin_size
+            end
+
+            -- Top edge
+            if row_start == 1 then
+                tile_y = tile_y + margin_size
+                tile_height = tile_height - margin_size
+            end
+
+            -- Right edge
+            if col_end == cols then
+                tile_width = tile_width - margin_size
+            end
+
+            -- Bottom edge
+            if row_end == rows then
+                tile_height = tile_height - margin_size
+            end
+        end
+
+        -- Apply internal margins between cells
+        -- Only subtract from width if this isn't the rightmost column
+        if col_end < cols then
+            tile_width = tile_width - margin_size
+        end
+
+        -- Only subtract from height if this isn't the bottom row
+        if row_end < rows then
+            tile_height = tile_height - margin_size
+        end
+
+        -- Add margin to x position if not in the leftmost column
+        if col_start > 1 and not screen_edge_margins then
+            tile_x = tile_x + margin_size
+            tile_width = tile_width - margin_size
+        end
+
+        -- Add margin to y position if not in the top row
+        if row_start > 1 and not screen_edge_margins then
+            tile_y = tile_y + margin_size
+            tile_height = tile_height - margin_size
+        end
+    end
+
     -- Ensure tiles stay within screen bounds
     if tile_x + tile_width > x + w then
-        -- Adjust width to stay within screen
         tile_width = (x + w) - tile_x
     end
 
     if tile_y + tile_height > y + h then
-        -- Adjust height to stay within screen
         tile_height = (y + h) - tile_y
     end
 
-    -- Log the calculation details for debugging - use %.1f for all numbers to ensure they format properly
+    -- Log the calculation details for debugging
     if tiler.config.debug then
         print(string.format(
             "[TilerDebug] Grid calc: screen %s, cell=%.1fx%.1f, position=%.1f,%.1f to %.1f,%.1f → x=%.1f, y=%.1f, w=%.1f, h=%.1f",
@@ -1324,6 +1389,25 @@ function tiler.start(config)
 
         if config.modifier then
             tiler.config.modifier = config.modifier
+        end
+
+        -- Apply margin settings if provided
+        if config.margins then
+            if config.margins.enabled ~= nil then
+                tiler.config.margins.enabled = config.margins.enabled
+            end
+
+            if config.margins.size ~= nil then
+                tiler.config.margins.size = config.margins.size
+            end
+
+            if config.margins.screen_edge ~= nil then
+                tiler.config.margins.screen_edge = config.margins.screen_edge
+            end
+
+            debug_log("Using margin settings: enabled=" .. tostring(tiler.config.margins.enabled) .. ", size=" ..
+                          tostring(tiler.config.margins.size) .. ", screen_edge=" ..
+                          tostring(tiler.config.margins.screen_edge))
         end
 
         if config.layouts and config.layouts.custom then

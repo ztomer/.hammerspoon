@@ -243,7 +243,12 @@ local function init()
     local tiler_config = {
         debug = true, -- Enable debug logging
         modifier = {"ctrl", "cmd"}, -- Set default modifier keys
-
+        -- Add window margin configuration
+        margins = {
+            enabled = true, -- Enable margins between windows
+            size = 5, -- Use 5 pixels for margins (adjust as needed)
+            screen_edge = true -- Apply margins to screen edges too
+        },
         -- Custom layouts for specific screens
         layouts = {
             custom = {
