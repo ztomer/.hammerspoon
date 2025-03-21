@@ -219,9 +219,18 @@ function Zone:add_tile(x, y, width, height, description)
 end
 
 function Zone:rotate_tile(window_id)
-    -- Initialize if window not already in this zone
+    -- Always initialize if window not already in this zone
     if not self.window_to_tile_idx[window_id] then
+        debug_log("Window not properly tracked in zone - initializing")
         self.window_to_tile_idx[window_id] = 0
+
+        -- Update global tracking
+        if not tiler._window_state[window_id] then
+            tiler._window_state[window_id] = {}
+        end
+        tiler._window_state[window_id].zone_id = self.id
+        tiler._window_state[window_id].tile_idx = 0
+
         return 0
     end
 
@@ -229,8 +238,15 @@ function Zone:rotate_tile(window_id)
     local next_idx = (self.window_to_tile_idx[window_id] + 1) % self.tile_count
     self.window_to_tile_idx[window_id] = next_idx
 
+    -- Update global tracking
+    if not tiler._window_state[window_id] then
+        tiler._window_state[window_id] = {}
+    end
+    tiler._window_state[window_id].zone_id = self.id
+    tiler._window_state[window_id].tile_idx = next_idx
+
     local desc = ""
-    if self.tiles[next_idx].description then
+    if self.tiles[next_idx] and self.tiles[next_idx].description then
         desc = " - " .. self.tiles[next_idx].description
     end
     debug_log("Rotated window", window_id, "to tile index", next_idx, "in zone", self.id, desc)
@@ -264,14 +280,32 @@ end
 
 -- Add a window to this zone
 function Zone:add_window(window_id)
-    if self.window_to_tile_idx[window_id] ~= nil then
-        debug_log("Window", window_id, "already in zone", self.id)
+    if not window_id then
+        debug_log("Cannot add nil window to zone", self.id)
         return
+    end
+
+    -- First, ensure we remove the window from any other zones
+    for _, zone in pairs(tiler._zone_id2zone) do
+        if zone.window_to_tile_idx and zone.window_to_tile_idx[window_id] ~= nil then
+            zone.window_to_tile_idx[window_id] = nil
+            debug_log("Removed window", window_id, "from zone", zone.id, "during add")
+        end
+    end
+
+    -- Initialize global tracking if needed
+    if not tiler._window_state[window_id] then
+        tiler._window_state[window_id] = {}
     end
 
     -- Map the window to this zone and set first tile (index 0)
     self.window_to_tile_idx[window_id] = 0
     tiler._window_id2zone_id[window_id] = self.id
+
+    -- Track in global state
+    tiler._window_state[window_id].zone_id = self.id
+    tiler._window_state[window_id].tile_idx = 0
+
     debug_log("Added window", window_id, "to zone", self.id)
 
     -- Store position in screen memory
@@ -299,7 +333,17 @@ function Zone:remove_window(window_id)
 
     debug_log("Removing window", window_id, "from zone", self.id)
     self.window_to_tile_idx[window_id] = nil
-    tiler._window_id2zone_id[window_id] = nil
+
+    -- Only remove from global mapping if it points to THIS zone
+    if tiler._window_id2zone_id[window_id] == self.id then
+        tiler._window_id2zone_id[window_id] = nil
+    end
+
+    -- If this is a screen-specific zone ID with an underscore
+    local base_id = self.id:match("^([^_]+)_")
+    if base_id and tiler._window_id2zone_id[window_id] == base_id then
+        tiler._window_id2zone_id[window_id] = nil
+    end
 end
 
 -- Resize a window based on its current tile configuration
@@ -404,10 +448,32 @@ end
 
 -- Table to store window positions for each screen
 tiler._screen_memory = {} -- Format: [window_id][screen_id] = {zone_id, tile_idx}
+tiler._window_state = {} -- Global tracking of window state
 
 --------------------------
 -- Core Functions
 --------------------------
+
+-- Utility function to find the correct zone for a window
+local function find_zone_for_window(window_id)
+    -- Check the official mapping first
+    local zone_id = tiler._window_id2zone_id[window_id]
+    if zone_id and tiler._zone_id2zone[zone_id] then
+        return tiler._zone_id2zone[zone_id]
+    end
+
+    -- If not found, check all zones for this window
+    for id, zone in pairs(tiler._zone_id2zone) do
+        if zone.window_to_tile_idx and zone.window_to_tile_idx[window_id] ~= nil then
+            -- Found window in a zone, update the official mapping
+            tiler._window_id2zone_id[window_id] = id
+            debug_log("Found window", window_id, "in zone", id, "- fixing state tracking")
+            return zone
+        end
+    end
+
+    return nil
+end
 
 -- Calculate tile position from grid coordinates
 local function calculate_tile_position(screen, col_start, row_start, col_end, row_end, rows, cols)
@@ -469,64 +535,106 @@ function activate_move_zone(zone_id)
     local win_id = win:id()
     local current_screen = win:screen()
     local current_screen_id = current_screen:id()
+    local screen_name = current_screen:name()
 
-    debug_log("Window is on screen: " .. current_screen:name() .. " (ID: " .. current_screen_id .. ")")
+    debug_log("Window is on screen: " .. screen_name .. " (ID: " .. current_screen_id .. ")")
 
     -- First look for zones that match our ID and are specifically on this screen
-    local matching_zones = {}
+    local target_zone = nil
 
-    -- Find zones with exact matching screen ID
-    for id, zone in pairs(tiler._zone_id2zone) do
-        if zone.screen and zone.screen:id() == current_screen_id then
-            -- Check for basic zone ID match
-            if id == zone_id then
-                debug_log("Found exact zone match on current screen: " .. id)
-                table.insert(matching_zones, zone)
-            end
-
-            -- Check for screen-specific IDs like "y_12345"
-            if id:match("^" .. zone_id .. "_%d+$") then
-                debug_log("Found screen-specific match on current screen: " .. id)
-                table.insert(matching_zones, zone)
+    -- First try to find a screen-specific match (like "y_4")
+    local screen_specific_id = zone_id .. "_" .. current_screen_id
+    if tiler._zone_id2zone[screen_specific_id] then
+        debug_log("Found exact screen-specific match: " .. screen_specific_id)
+        target_zone = tiler._zone_id2zone[screen_specific_id]
+    else
+        -- Look for any zone with this ID on this screen
+        for id, zone in pairs(tiler._zone_id2zone) do
+            if zone.screen and zone.screen:id() == current_screen_id then
+                if id == zone_id or id:match("^" .. zone_id .. "_%d+$") then
+                    debug_log("Found zone match on current screen: " .. id)
+                    target_zone = zone
+                    break
+                end
             end
         end
     end
 
-    -- If no zones found on current screen, give up (don't move to another screen)
-    if #matching_zones == 0 then
+    -- If no zones found on current screen, give up
+    if not target_zone then
         debug_log("No matching zones found on current screen. Not moving window.")
         return
     end
 
-    -- Use the first matching zone on the current screen
-    local zone = matching_zones[1]
-    debug_log("Using zone: " .. zone.id .. " on screen: " .. (zone.screen and zone.screen:name() or "unknown"))
+    -- At this point we have a valid target zone
+    debug_log("Using zone: " .. target_zone.id .. " on screen: " .. screen_name)
 
-    -- Get the window's current zone
-    local current_zone_id = tiler._window_id2zone_id[win_id]
+    -- Check where the window is currently
+    local current_zone_id = nil
 
-    if not current_zone_id then
-        -- Window is not in any zone, add it to the target zone
-        debug_log("Adding window", win_id, "to zone", zone.id)
-        zone:add_window(win_id)
-    elseif current_zone_id ~= zone.id then
-        -- Window is in a different zone, move it to the target zone
-        local source_zone = tiler._zone_id2zone[current_zone_id]
-        debug_log("Moving window", win_id, "from zone", current_zone_id, "to zone", zone.id)
+    -- Check the global state first
+    if tiler._window_state[win_id] and tiler._window_state[win_id].zone_id then
+        current_zone_id = tiler._window_state[win_id].zone_id
+        debug_log("Found window in global state tracker: zone", current_zone_id)
+    else
+        -- Fall back to the original tracking
+        current_zone_id = tiler._window_id2zone_id[win_id]
+    end
 
-        if source_zone then
-            source_zone:remove_window(win_id)
+    -- Check if window is actually in this zone (sanity check)
+    local is_in_zone = false
+    if target_zone.window_to_tile_idx and target_zone.window_to_tile_idx[win_id] ~= nil then
+        is_in_zone = true
+    end
+
+    -- Ensure consistent state
+    if (current_zone_id == target_zone.id) ~= is_in_zone then
+        debug_log("Inconsistent state detected: id match =", (current_zone_id == target_zone.id), "is_in_zone =",
+            is_in_zone, "- repairing")
+
+        -- If it claims to be in this zone but isn't, add it
+        if current_zone_id == target_zone.id and not is_in_zone then
+            target_zone.window_to_tile_idx[win_id] = 0
         end
 
-        zone:add_window(win_id)
+        -- If it's in this zone but not tracked, update tracking
+        if is_in_zone and current_zone_id ~= target_zone.id then
+            tiler._window_id2zone_id[win_id] = target_zone.id
+
+            if not tiler._window_state[win_id] then
+                tiler._window_state[win_id] = {}
+            end
+            tiler._window_state[win_id].zone_id = target_zone.id
+        end
+    end
+
+    -- Handle the three possible cases
+    if not current_zone_id then
+        -- Window is not in any zone, add it to the target zone
+        debug_log("Adding window", win_id, "to zone", target_zone.id)
+        target_zone:add_window(win_id)
+    elseif current_zone_id ~= target_zone.id then
+        -- Window is in a different zone, move it to the target zone
+        debug_log("Moving window", win_id, "from zone", current_zone_id, "to zone", target_zone.id)
+
+        -- Find and remove from the old zone
+        for id, zone in pairs(tiler._zone_id2zone) do
+            if zone.window_to_tile_idx and zone.window_to_tile_idx[win_id] ~= nil then
+                debug_log("Removing window from zone", id)
+                zone.window_to_tile_idx[win_id] = nil
+            end
+        end
+
+        -- Add to the new zone
+        target_zone:add_window(win_id)
     else
         -- Window already in this zone, rotate through tiles
-        debug_log("Rotating window", win_id, "in zone", zone.id)
-        zone:rotate_tile(win_id)
+        debug_log("Rotating window", win_id, "in zone", target_zone.id)
+        target_zone:rotate_tile(win_id)
     end
 
     -- Apply the new tile dimensions
-    zone:resize_window(win_id)
+    target_zone:resize_window(win_id)
 
     -- For debugging, confirm the new position
     hs.timer.doAfter(0.1, function()
