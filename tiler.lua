@@ -218,7 +218,6 @@ function Zone:add_tile(x, y, width, height, description)
     return self -- For method chaining
 end
 
--- Rotate a window through tile configurations
 function Zone:rotate_tile(window_id)
     -- Initialize if window not already in this zone
     if not self.window_to_tile_idx[window_id] then
@@ -235,6 +234,22 @@ function Zone:rotate_tile(window_id)
         desc = " - " .. self.tiles[next_idx].description
     end
     debug_log("Rotated window", window_id, "to tile index", next_idx, "in zone", self.id, desc)
+
+    -- Update the memory for this screen
+    if self.screen and tiler._screen_memory[window_id] then
+        local screen_id = self.screen:id()
+        if not tiler._screen_memory[window_id] then
+            tiler._screen_memory[window_id] = {}
+        end
+
+        tiler._screen_memory[window_id][screen_id] = {
+            zone_id = self.id,
+            tile_idx = next_idx
+        }
+        debug_log("Updated remembered position for window", window_id, "on screen", screen_id, "zone", self.id, "tile",
+            next_idx)
+    end
+
     return next_idx
 end
 
@@ -258,6 +273,21 @@ function Zone:add_window(window_id)
     self.window_to_tile_idx[window_id] = 0
     tiler._window_id2zone_id[window_id] = self.id
     debug_log("Added window", window_id, "to zone", self.id)
+
+    -- Store position in screen memory
+    if self.screen then
+        -- Initialize window's memory if needed
+        if not tiler._screen_memory[window_id] then
+            tiler._screen_memory[window_id] = {}
+        end
+
+        local screen_id = self.screen:id()
+        tiler._screen_memory[window_id][screen_id] = {
+            zone_id = self.id,
+            tile_idx = 0
+        }
+        debug_log("Remembered position for window", window_id, "on screen", screen_id, "zone", self.id, "tile", 0)
+    end
 end
 
 -- Remove a window from this zone
@@ -343,6 +373,9 @@ function Zone:register()
 
     return self -- For method chaining
 end
+
+-- Table to store window positions for each screen
+tiler._screen_memory = {} -- Format: [window_id][screen_id] = {zone_id, tile_idx}
 
 --------------------------
 -- Core Functions
@@ -963,11 +996,186 @@ local function init_listeners()
     hs.screen.watcher.new(handle_display_change):start()
 end
 
--- Initialize the tiler
-local function init()
-    debug_log("Initializing Tiler v" .. tiler._version)
+-- Configure a custom layout for a screen
+function tiler.configure_screen(screen_name, config)
+    debug_log("Setting custom configuration for screen:", screen_name)
+    tiler.layouts.custom[screen_name] = config
 
-    -- Set up event listeners
+    -- If the screen is currently connected, apply the config immediately
+    for _, screen in pairs(hs.screen.allScreens()) do
+        if screen:name() == screen_name then
+            init_mode(screen, config)
+            break
+        end
+    end
+end
+
+-- Helper function to move window to screen and restore position
+local function move_window_to_screen(win, target_screen)
+    if not win or not target_screen then
+        return false
+    end
+
+    local win_id = win:id()
+    local target_screen_id = target_screen:id()
+
+    -- First move the window to the target screen
+    win:moveToScreen(target_screen)
+
+    -- Check if we have a remembered position for this window on the target screen
+    if tiler._screen_memory[win_id] and tiler._screen_memory[win_id][target_screen_id] then
+        local memory = tiler._screen_memory[win_id][target_screen_id]
+        local zone_id = memory.zone_id
+        local tile_idx = memory.tile_idx
+
+        debug_log("Restoring window", win_id, "to remembered position on screen", target_screen_id, "zone", zone_id,
+            "tile", tile_idx)
+
+        -- Find the zone (look for both simple ID and screen-specific ID)
+        local target_zone = nil
+        for id, zone in pairs(tiler._zone_id2zone) do
+            if (id == zone_id or id:match("^" .. zone_id .. "_%d+$")) and zone.screen and zone.screen:id() ==
+                target_screen_id then
+                target_zone = zone
+                break
+            end
+        end
+
+        if target_zone then
+            -- Remove the window from any current zone
+            local current_zone_id = tiler._window_id2zone_id[win_id]
+            if current_zone_id and tiler._zone_id2zone[current_zone_id] then
+                tiler._zone_id2zone[current_zone_id]:remove_window(win_id)
+            end
+
+            -- Add to the remembered zone
+            target_zone.window_to_tile_idx[win_id] = tile_idx
+            tiler._window_id2zone_id[win_id] = target_zone.id
+
+            -- Resize to the remembered tile
+            target_zone:resize_window(win_id)
+
+            return true
+        end
+    else
+        debug_log("No remembered position for window", win_id, "on screen", target_screen_id)
+    end
+
+    -- If we reached here, either there's no remembered position or we couldn't restore it
+    -- In this case, the window is moved to the target screen but not positioned
+    return false
+end
+
+-- Function to move to next screen with position memory
+function move_to_next_screen()
+    local win = hs.window.focusedWindow()
+    if not win then
+        return
+    end
+
+    -- Get all screens
+    local screens = hs.screen.allScreens()
+    if #screens < 2 then
+        return
+    end
+
+    -- Find current screen
+    local current_screen = win:screen()
+    local current_screen_id = current_screen:id()
+
+    -- Find next screen
+    local next_screen = nil
+    for i, screen in ipairs(screens) do
+        if screen:id() == current_screen_id then
+            next_screen = screens[(i % #screens) + 1]
+            break
+        end
+    end
+
+    if next_screen then
+        debug_log("Moving window to next screen: " .. next_screen:name())
+        move_window_to_screen(win, next_screen)
+    end
+end
+
+-- Function to move to previous screen with position memory
+function move_to_previous_screen()
+    local win = hs.window.focusedWindow()
+    if not win then
+        return
+    end
+
+    -- Get all screens
+    local screens = hs.screen.allScreens()
+    if #screens < 2 then
+        return
+    end
+
+    -- Find current screen
+    local current_screen = win:screen()
+    local current_screen_id = current_screen:id()
+
+    -- Find previous screen
+    local prev_screen = nil
+    for i, screen in ipairs(screens) do
+        if screen:id() == current_screen_id then
+            prev_screen = screens[((i - 2) % #screens) + 1]
+            break
+        end
+    end
+
+    if prev_screen then
+        debug_log("Moving window to previous screen: " .. prev_screen:name())
+        move_window_to_screen(win, prev_screen)
+    end
+end
+
+-- Function to set up screen movement hotkeys
+function tiler.setup_screen_movement_keys()
+    hs.hotkey.bind(tiler.config.modifier, "p", move_to_next_screen)
+    hs.hotkey.bind(tiler.config.modifier, ";", move_to_previous_screen)
+    debug_log("Screen movement keys set up")
+end
+
+-- Configure zone behavior
+function tiler.configure_zone(zone_key, tile_configs)
+    debug_log("Setting custom configuration for zone key:", zone_key)
+    tiler.zone_configs[zone_key] = tile_configs
+
+    -- Return a function that can be used to trigger a refresh
+    -- (since we don't want to force a refresh on every config change)
+    return function()
+        handle_display_change()
+    end
+end
+
+function tiler.start(config)
+    debug_log("Starting Tiler v" .. tiler._version)
+
+    -- Apply any configuration passed to start
+    if config then
+        if config.debug ~= nil then
+            tiler.config.debug = config.debug
+        end
+
+        if config.modifier then
+            tiler.config.modifier = config.modifier
+        end
+
+        if config.layouts and config.layouts.custom then
+            for screen_name, layout in pairs(config.layouts.custom) do
+                tiler.layouts.custom[screen_name] = layout
+            end
+        end
+
+        if config.zone_configs then
+            for key, configs in pairs(config.zone_configs) do
+                tiler.zone_configs[key] = configs
+            end
+        end
+    end
+
+    -- Initialize the tiler
     init_listeners()
 
     -- Initialize layouts for all screens
@@ -996,37 +1204,12 @@ local function init()
         debug_log("Debug mode: " .. (tiler.config.debug and "enabled" or "disabled"))
     end)
 
+    -- Setup screen movement keys
+    tiler.setup_screen_movement_keys()
+
     debug_log("Tiler initialization complete")
+    return tiler
 end
-
--- Configure a custom layout for a screen
-function tiler.configure_screen(screen_name, config)
-    debug_log("Setting custom configuration for screen:", screen_name)
-    tiler.layouts.custom[screen_name] = config
-
-    -- If the screen is currently connected, apply the config immediately
-    for _, screen in pairs(hs.screen.allScreens()) do
-        if screen:name() == screen_name then
-            init_mode(screen, config)
-            break
-        end
-    end
-end
-
--- Configure zone behavior
-function tiler.configure_zone(zone_key, tile_configs)
-    debug_log("Setting custom configuration for zone key:", zone_key)
-    tiler.zone_configs[zone_key] = tile_configs
-
-    -- Return a function that can be used to trigger a refresh
-    -- (since we don't want to force a refresh on every config change)
-    return function()
-        handle_display_change()
-    end
-end
-
--- Start the tiler
-init()
 
 -- Return the tiler object for configuration
 return tiler

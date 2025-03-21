@@ -187,16 +187,7 @@ end
 
 -- ===== Initialization Functions =====
 
---[[
-  Initializes window management keybindings
-]]
-local function init_wm_binding()
-    hs.hotkey.bind(mash_app, '/', display_help)
-    hs.hotkey.bind(HYPER, ";", function()
-        gridSnap(hs.window.focusedWindow())
-    end)
-    hs.hotkey.bind(HYPER, "g", snap_all_windows)
-
+local function init_old_wm_binding()
     -- Grid size adjustments
     hs.hotkey.bind(mash, '=', function()
         hs.grid.adjustWidth(1)
@@ -210,6 +201,33 @@ local function init_wm_binding()
     hs.hotkey.bind(mash, '[', function()
         hs.grid.adjustHeight(-1)
     end)
+
+    hs.hotkey.bind(mash, 'N', hs.grid.pushWindowNextScreen)
+    hs.hotkey.bind(mash, 'P', hs.grid.pushWindowPrevScreen)
+    -- Window movement
+    hs.hotkey.bind(mash, 'H', hs.grid.pushWindowLeft)
+    hs.hotkey.bind(mash, 'J', hs.grid.pushWindowDown)
+    hs.hotkey.bind(mash, 'K', hs.grid.pushWindowUp)
+    hs.hotkey.bind(mash, 'L', hs.grid.pushWindowRight)
+    hs.hotkey.bind(mash, 'R', rescue_windows)
+    -- Window resizing
+    hs.hotkey.bind(mash, 'Y', hs.grid.resizeWindowThinner)
+    hs.hotkey.bind(mash, 'U', hs.grid.resizeWindowShorter)
+    hs.hotkey.bind(mash, 'I', hs.grid.resizeWindowTaller)
+    hs.hotkey.bind(mash, 'O', hs.grid.resizeWindowWider)
+    hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
+
+end
+
+--[[
+  Initializes window management keybindings
+]]
+local function init_wm_binding()
+    hs.hotkey.bind(mash_app, '/', display_help)
+    -- hs.hotkey.bind(HYPER, ";", function()
+    --     gridSnap(hs.window.focusedWindow())
+    -- end)
+    hs.hotkey.bind(HYPER, "g", snap_all_windows)
 
     -- Window focus
     hs.hotkey.bind(mash_shift, 'H', function()
@@ -225,24 +243,7 @@ local function init_wm_binding()
         hs.window.focusedWindow():focusWindowSouth()
     end)
 
-    hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
-    hs.hotkey.bind(mash, 'N', hs.grid.pushWindowNextScreen)
-    hs.hotkey.bind(mash, 'P', hs.grid.pushWindowPrevScreen)
-
-    -- Window movement
-    hs.hotkey.bind(mash, 'H', hs.grid.pushWindowLeft)
-    hs.hotkey.bind(mash, 'J', hs.grid.pushWindowDown)
-    hs.hotkey.bind(mash, 'K', hs.grid.pushWindowUp)
-    hs.hotkey.bind(mash, 'L', hs.grid.pushWindowRight)
-    hs.hotkey.bind(mash, 'R', rescue_windows)
-
-    -- Window resizing
-    hs.hotkey.bind(mash, 'Y', hs.grid.resizeWindowThinner)
-    hs.hotkey.bind(mash, 'U', hs.grid.resizeWindowShorter)
-    hs.hotkey.bind(mash, 'I', hs.grid.resizeWindowTaller)
-    hs.hotkey.bind(mash, 'O', hs.grid.resizeWindowWider)
-
-    hs.hotkey.bind(mash, '.', hs.hints.windowHints)
+    hs.hotkey.bind(HYPER, '/', hs.hints.windowHints)
 
     -- Pomodoro bindings
     hs.hotkey.bind(mash, '9', pom_enable)
@@ -284,73 +285,6 @@ local function init_watcher()
     watcher:subscribe(hs.window.filter.windowFocused, snap_to_grid)
 end
 
--- Set up screen movement keys without using debug_log
-local function setup_screen_movement_keys()
-    -- Move window to next screen
-    hs.hotkey.bind(tiler.config.modifier, "p", function()
-        local win = hs.window.focusedWindow()
-        if not win then
-            return
-        end
-
-        -- Get all screens
-        local screens = hs.screen.allScreens()
-        if #screens < 2 then
-            return
-        end
-
-        -- Find current screen
-        local current_screen = win:screen()
-        local current_screen_id = current_screen:id()
-
-        -- Find next screen
-        local next_screen = nil
-        for i, screen in ipairs(screens) do
-            if screen:id() == current_screen_id then
-                next_screen = screens[(i % #screens) + 1]
-                break
-            end
-        end
-
-        if next_screen then
-            print("[TilerDebug] Moving window to next screen: " .. next_screen:name())
-            win:moveToScreen(next_screen)
-        end
-    end)
-
-    -- Move window to previous screen
-    hs.hotkey.bind(tiler.config.modifier, ";", function()
-        local win = hs.window.focusedWindow()
-        if not win then
-            return
-        end
-
-        -- Get all screens
-        local screens = hs.screen.allScreens()
-        if #screens < 2 then
-            return
-        end
-
-        -- Find current screen
-        local current_screen = win:screen()
-        local current_screen_id = current_screen:id()
-
-        -- Find previous screen
-        local prev_screen = nil
-        for i, screen in ipairs(screens) do
-            if screen:id() == current_screen_id then
-                prev_screen = screens[((i - 2) % #screens) + 1]
-                break
-            end
-        end
-
-        if prev_screen then
-            print("[TilerDebug] Moving window to previous screen: " .. prev_screen:name())
-            win:moveToScreen(prev_screen)
-        end
-    end)
-end
-
 --[[
   Main initialization function
 ]]
@@ -371,8 +305,30 @@ local function init()
 
     -- Initialize all components
     -- init_wm_binding()
-    setup_screen_movement_keys()
+    local tiler_config = {
+        debug = true, -- Enable debug logging
+        modifier = {"ctrl", "cmd"}, -- Set default modifier keys
 
+        -- Custom layouts for specific screens
+        layouts = {
+            custom = {
+                ["DELL U3223QE"] = {
+                    cols = 4,
+                    rows = 3
+                },
+                ["LG IPS QHD"] = {
+                    cols = 1,
+                    rows = 3
+                } -- 1×3 for portrait LG
+            }
+        }
+    }
+
+    -- Start tiler with the configuration
+    tiler.start(tiler_config)
+    tiler.setup_screen_movement_keys()
+
+    init_wm_binding()
     init_app_binding()
     init_custom_binding()
     init_watcher()
