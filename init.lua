@@ -1,11 +1,11 @@
 -- Hammerspoon configuration, heavily influenced by sdegutis default configuration
 require "pomodoor"
-require "homebrew"
+require "tiler"
 
 -- Initialize constants
 local GRID_MARGIN_X = 5
 local GRID_MARGIN_Y = 5
-local GRID_WIDTH = 7
+local GRID_WIDTH = 4
 local GRID_HEIGHT = 3
 
 -- Key combinations
@@ -39,7 +39,7 @@ local appCuts = {
     a = 'Notion',
     s = 'Notion Mail',
     d = 'Notion Calendar',
-    f = 'Firefox',
+    f = 'Zen',
     g = 'Gmail',
     z = 'Nimble Commander',
     x = 'Claude',
@@ -287,6 +287,7 @@ end
   Main initialization function
 ]]
 local function init()
+
     -- Disable animation for speed
     hs.window.animationDuration = 0
 
@@ -301,7 +302,7 @@ local function init()
     spoon.RoundedCorners:start()
 
     -- Initialize all components
-    init_wm_binding()
+    -- init_wm_binding()
     init_app_binding()
     init_custom_binding()
     init_watcher()

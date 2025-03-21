@@ -137,7 +137,7 @@ local DEFAULT_ZONE_CONFIGS = {
 }
 
 -- Debug logging function
-local function log(...)
+local function debug_log(...)
     if tiler.config.debug then
         print("[TilerDebug]", ...)
     end
@@ -181,7 +181,7 @@ local Zone = {}
 Zone.__index = Zone
 
 -- Create a new zone
-function Zone.new(id, hotkey)
+function Zone.new(id, hotkey, screen)
     local self = setmetatable({}, Zone)
     self.id = id
     self.hotkey = hotkey
@@ -189,6 +189,7 @@ function Zone.new(id, hotkey)
     self.tile_count = 0
     self.window_to_tile_idx = {}
     self.description = nil
+    self.screen = screen -- Store reference to the screen this zone belongs to
     return self
 end
 
@@ -212,7 +213,7 @@ function Zone:add_tile(x, y, width, height, description)
     end
     self.tiles[self.tile_count] = tile
     self.tile_count = self.tile_count + 1
-    log("Added tile to zone", self.id, "total tiles:", self.tile_count,
+    debug_log("Added tile to zone", self.id, "total tiles:", self.tile_count,
         description and ("(" .. description .. ")") or "")
     return self -- For method chaining
 end
@@ -233,7 +234,7 @@ function Zone:rotate_tile(window_id)
     if self.tiles[next_idx].description then
         desc = " - " .. self.tiles[next_idx].description
     end
-    log("Rotated window", window_id, "to tile index", next_idx, "in zone", self.id, desc)
+    debug_log("Rotated window", window_id, "to tile index", next_idx, "in zone", self.id, desc)
     return next_idx
 end
 
@@ -249,24 +250,24 @@ end
 -- Add a window to this zone
 function Zone:add_window(window_id)
     if self.window_to_tile_idx[window_id] ~= nil then
-        log("Window", window_id, "already in zone", self.id)
+        debug_log("Window", window_id, "already in zone", self.id)
         return
     end
 
     -- Map the window to this zone and set first tile (index 0)
     self.window_to_tile_idx[window_id] = 0
     tiler._window_id2zone_id[window_id] = self.id
-    log("Added window", window_id, "to zone", self.id)
+    debug_log("Added window", window_id, "to zone", self.id)
 end
 
 -- Remove a window from this zone
 function Zone:remove_window(window_id)
     if self.window_to_tile_idx[window_id] == nil then
-        log("Window", window_id, "not in zone", self.id)
+        debug_log("Window", window_id, "not in zone", self.id)
         return
     end
 
-    log("Removing window", window_id, "from zone", self.id)
+    debug_log("Removing window", window_id, "from zone", self.id)
     self.window_to_tile_idx[window_id] = nil
     tiler._window_id2zone_id[window_id] = nil
 end
@@ -275,45 +276,69 @@ end
 function Zone:resize_window(window_id)
     local tile_idx = self.window_to_tile_idx[window_id]
     if not tile_idx then
-        log("Cannot resize window", window_id, "- not in zone", self.id)
+        debug_log("Cannot resize window", window_id, "- not in zone", self.id)
         return false
     end
 
     local tile = self.tiles[tile_idx]
     if not tile then
-        log("Invalid tile index", tile_idx, "for window", window_id)
+        debug_log("Invalid tile index", tile_idx, "for window", window_id)
         return false
     end
 
     local window = hs.window.get(window_id)
     if not window then
-        log("Cannot find window with ID", window_id)
+        debug_log("Cannot find window with ID", window_id)
         return false
     end
 
-    -- Apply the tile dimensions to the window
-    log("Resizing window", window_id, "to", tile:to_string())
-    window:setFrame({
+    -- Get the screen for this zone
+    local target_screen = self.screen
+    if not target_screen then
+        -- Fallback to current screen if zone doesn't have one assigned
+        target_screen = window:screen()
+        debug_log("Zone has no screen assigned, using window's current screen:", target_screen:name())
+    end
+
+    -- Apply the tile dimensions to the window, using the screen's frame
+    local frame = {
         x = tile.x,
         y = tile.y,
         w = tile.width,
         h = tile.height
-    })
+    }
+
+    debug_log("Setting frame for window", window_id, "to", tile:to_string(), "on screen", target_screen:name())
+    window:setFrame(frame)
 
     return true
 end
 
--- Register the zone with the tiler
+-- Register the zone with the Tiler
 function Zone:register()
-    tiler._zone_id2zone[self.id] = self
-    log("Registered zone", self.id)
+    -- Create a unique zone ID that includes the screen
+    local full_id = self.id
+    if self.screen then
+        -- Add screen ID to make it unique, but keep original ID for hotkey referencing
+        full_id = self.id .. "_" .. self.screen:id()
+    end
+
+    tiler._zone_id2zone[full_id] = self
+
+    -- Also register with the simple ID, if not already registered
+    -- This ensures that hotkeys will find a zone even if they don't specify a screen
+    if not tiler._zone_id2zone[self.id] then
+        tiler._zone_id2zone[self.id] = self
+    end
+
+    debug_log("Registered zone", full_id)
 
     -- Set up the hotkey for this zone
     if self.hotkey then
         hs.hotkey.bind(self.hotkey[1], self.hotkey[2], function()
             activate_move_zone(self.id)
         end)
-        log("Bound hotkey", self.hotkey[1], self.hotkey[2], "to zone", self.id)
+        debug_log("Bound hotkey", self.hotkey[1], self.hotkey[2], "to zone", self.id)
     end
 
     return self -- For method chaining
@@ -323,36 +348,126 @@ end
 -- Core Functions
 --------------------------
 
+-- Calculate tile position from grid coordinates
+local function calculate_tile_position(screen, col_start, row_start, col_end, row_end, rows, cols)
+    local frame = screen:frame()
+    local w = frame.w
+    local h = frame.h
+    local x = frame.x
+    local y = frame.y
+
+    -- Calculate grid cell dimensions
+    local col_width = w / cols
+    local row_height = h / rows
+
+    -- Calculate absolute position and size
+    local tile_x = x + (col_start - 1) * col_width
+    local tile_y = y + (row_start - 1) * row_height
+    local tile_width = (col_end - col_start + 1) * col_width
+    local tile_height = (row_end - row_start + 1) * row_height
+
+    -- Ensure tiles stay within screen bounds
+    if tile_x + tile_width > x + w then
+        -- Adjust width to stay within screen
+        tile_width = (x + w) - tile_x
+    end
+
+    if tile_y + tile_height > y + h then
+        -- Adjust height to stay within screen
+        tile_height = (y + h) - tile_y
+    end
+
+    -- Log the calculation details for debugging - use %.1f for all numbers to ensure they format properly
+    if tiler.config.debug then
+        print(string.format(
+            "[TilerDebug] Grid calc: screen %s, cell=%.1fx%.1f, position=%.1f,%.1f to %.1f,%.1f → x=%.1f, y=%.1f, w=%.1f, h=%.1f",
+            screen:name(), col_width, row_height, col_start, row_start, col_end, row_end, tile_x, tile_y, tile_width,
+            tile_height))
+    end
+
+    return {
+        x = tile_x,
+        y = tile_y,
+        width = tile_width,
+        height = tile_height
+    }
+end
+
 -- Handle moving a window to a zone or cycling its tile
-local function activate_move_zone(zone_id)
-    log("Activating zone", zone_id)
+-- This is made global (non-local) so hotkey callbacks can access it
+function activate_move_zone(zone_id)
+    debug_log("Activating zone", zone_id)
 
     -- Get focused window
     local win = hs.window.focusedWindow()
     if not win then
-        log("No focused window")
+        debug_log("No focused window")
         return
     end
 
     local win_id = win:id()
+    local current_screen = win:screen()
+    local current_screen_id = current_screen:id()
 
-    -- Get the window's current zone
-    local current_zone_id = tiler._window_id2zone_id[win_id]
-    local zone = tiler._zone_id2zone[zone_id]
+    debug_log("Window is on screen: " .. current_screen:name() .. " (ID: " .. current_screen_id .. ")")
 
-    if not zone then
-        log("Zone", zone_id, "not found")
+    -- Find zones with matching ID specifically on the current screen
+    local screen_specific_zones = {}
+    local generic_zones = {}
+
+    -- Look for zones with our ID
+    for id, zone in pairs(tiler._zone_id2zone) do
+        -- Check for exact zone_id match
+        if id == zone_id then
+            -- If zone has a screen, check if it matches current screen
+            if zone.screen and zone.screen:id() == current_screen_id then
+                -- Zone is on current screen - highest priority
+                table.insert(screen_specific_zones, zone)
+                debug_log("Found zone on current screen: " .. id)
+            else
+                -- Zone is not on current screen or doesn't have screen info
+                table.insert(generic_zones, zone)
+                debug_log("Found generic zone: " .. id)
+            end
+        end
+
+        -- Also check for screen-specific zone IDs like "y_12345"
+        if id:match("^" .. zone_id .. "_%d+$") then
+            -- If zone has a screen, check if it matches current screen
+            if zone.screen and zone.screen:id() == current_screen_id then
+                -- Zone is on current screen with ID like "y_12345" - high priority
+                table.insert(screen_specific_zones, zone)
+                debug_log("Found screen-specific zone: " .. id)
+            end
+        end
+    end
+
+    -- Choose the best zone, preferring current screen
+    local zone = nil
+    if #screen_specific_zones > 0 then
+        -- Use first zone specifically on this screen
+        zone = screen_specific_zones[1]
+        debug_log("Using screen-specific zone: " .. zone.id)
+    elseif #generic_zones > 0 then
+        -- No zones on current screen, using generic zone
+        zone = generic_zones[1]
+        debug_log("Using generic zone: " .. zone.id .. " (this might move the window to another screen)")
+    else
+        debug_log("Zone " .. zone_id .. " not found on any screen")
         return
     end
 
+    -- Get the window's current zone
+    local current_zone_id = tiler._window_id2zone_id[win_id]
+
     if not current_zone_id then
         -- Window is not in any zone, add it to the target zone
-        log("Adding window", win_id, "to zone", zone_id)
+        debug_log("Adding window", win_id, "to zone", zone.id)
         zone:add_window(win_id)
-    elseif current_zone_id ~= zone_id then
+    elseif current_zone_id ~= zone.id then
         -- Window is in a different zone, move it to the target zone
         local source_zone = tiler._zone_id2zone[current_zone_id]
-        log("Moving window", win_id, "from zone", current_zone_id, "to zone", zone_id)
+        debug_log("Moving window", win_id, "from zone", current_zone_id, "to zone", zone.id)
 
         if source_zone then
             source_zone:remove_window(win_id)
@@ -361,7 +476,7 @@ local function activate_move_zone(zone_id)
         zone:add_window(win_id)
     else
         -- Window already in this zone, rotate through tiles
-        log("Rotating window", win_id, "in zone", zone_id)
+        debug_log("Rotating window", win_id, "in zone", zone.id)
         zone:rotate_tile(win_id)
     end
 
@@ -371,7 +486,7 @@ end
 
 -- Handle window events (destruction, creation, etc.)
 local function handle_window_event(win_obj, appName, event_name)
-    log("Window event:", event_name, "for app:", appName)
+    debug_log("Window event:", event_name, "for app:", appName)
 
     if event_name == "windowDestroyed" and win_obj then
         local win_id = win_obj:id()
@@ -380,7 +495,7 @@ local function handle_window_event(win_obj, appName, event_name)
         if zone_id then
             local zone = tiler._zone_id2zone[zone_id]
             if zone then
-                log("Window destroyed, removing from zone:", zone_id)
+                debug_log("Window destroyed, removing from zone:", zone_id)
                 zone:remove_window(win_id)
             end
         end
@@ -389,7 +504,7 @@ end
 
 -- Handle windows when displays are changed
 local function handle_display_change()
-    log("Screen configuration changed")
+    debug_log("Screen configuration changed")
 
     -- Clear existing modes since screen positions may have changed
     tiler._modes = {}
@@ -397,17 +512,17 @@ local function handle_display_change()
     for _, screen in pairs(hs.screen.allScreens()) do
         local screen_id = screen:id()
         local screen_name = screen:name()
-        log("Processing screen:", screen_name, "ID:", screen_id)
+        debug_log("Processing screen:", screen_name, "ID:", screen_id)
 
         -- Check for custom configuration for this specific screen
         local mode_config
         if tiler.layouts.custom[screen_name] then
-            log("Using custom layout for screen:", screen_name)
+            debug_log("Using custom layout for screen:", screen_name)
             mode_config = tiler.layouts.custom[screen_name]
         else
             -- Use default configuration based on screen size
             local mode_type = get_mode_for_screen(screen)
-            log("Using default layout:", mode_type)
+            debug_log("Using default layout:", mode_type)
             mode_config = mode_type
         end
 
@@ -421,7 +536,7 @@ local function handle_display_change()
         for window_id, zone_id in pairs(tiler._window_id2zone_id) do
             local zone = tiler._zone_id2zone[zone_id]
             if zone then
-                log("Resizing window", window_id, "in zone", zone_id)
+                debug_log("Resizing window", window_id, "in zone", zone_id)
                 zone:resize_window(window_id)
             end
         end
@@ -433,18 +548,100 @@ function get_mode_for_screen(screen)
     local screen_frame = screen:frame()
     local width = screen_frame.w
     local height = screen_frame.h
+    local is_portrait = height > width
 
-    log("Screen dimensions:", width, "x", height)
+    debug_log(string.format("Screen dimensions: %.1f x %.1f", width, height))
 
-    -- Apply different grids based on screen size
-    if width >= 3840 and height >= 2160 then
-        return "4x3" -- 4K monitors get a 4×3 grid
-    elseif width >= 2560 then
-        return "3x3" -- Wide monitors get a 3×3 grid
-    elseif width >= 1920 and height >= 1080 then
-        return "3x2" -- Full HD gets a 3×2 grid
+    -- Get screen name for better identification
+    local screen_name = screen:name()
+    debug_log("Screen name: " .. screen_name)
+
+    -- First check if there's a custom layout for this specific screen
+    if tiler.layouts.custom[screen_name] then
+        local config = tiler.layouts.custom[screen_name]
+        debug_log("Using custom layout for screen:", screen_name)
+        return config
+    end
+
+    -- 1. Check for built-in MacBook displays
+    if screen_name:match("Built%-in") or screen_name:match("Color LCD") or screen_name:match("internal") or
+        screen_name:match("MacBook") then
+        debug_log("Detected MacBook built-in display - using 2x2 layout")
+        return "2x2"
+    end
+
+    -- 2. Check for Dell 32-inch monitor specifically
+    if screen_name:match("DELL") and (screen_name:match("U3223") or screen_name:match("32")) then
+        debug_log("Detected Dell 32-inch monitor - using 4x3 layout")
+        return "4x3"
+    end
+
+    -- 3. Try to extract screen size from name
+    local size_pattern = "(%d+)[%s%-]?inch"
+    local size_match = screen_name:match(size_pattern)
+
+    if size_match then
+        local screen_size = tonumber(size_match)
+        debug_log("Extracted screen size from name: " .. screen_size .. " inches")
+
+        if screen_size >= 27 then
+            debug_log("Large monitor (≥ 27\") - using 4x3 layout")
+            return "4x3"
+        elseif screen_size >= 24 then
+            debug_log("Medium monitor (24-26\") - using 3x3 layout")
+            return "3x3"
+        elseif screen_size >= 20 then
+            debug_log("Standard monitor (20-23\") - using 3x2 layout")
+            return "3x2"
+        else
+            debug_log("Small monitor (< 20\") - using 2x2 layout")
+            return "2x2"
+        end
+    end
+
+    -- 4. Check for common monitor families
+    if screen_name:match("LG UltraFine") or screen_name:match("Pro Display XDR") or screen_name:match("U27") or
+        screen_name:match("U32") then
+        debug_log("Detected high-end monitor - using 4x3 layout")
+        return "4x3"
+    end
+
+    -- 5. Use resolution-based detection as fallback
+    if is_portrait then
+        -- Portrait orientation
+        if width >= 1440 or height >= 2560 then
+            debug_log("High-resolution portrait screen - using 3x1 layout")
+            return "3x1"
+        else
+            debug_log("Standard portrait screen - using 2x1 layout")
+            return "2x1"
+        end
     else
-        return "2x2" -- Smaller screens get a simple 2×2 grid
+        -- Landscape orientation
+        local aspect_ratio = width / height
+        local is_ultrawide = aspect_ratio > 2.0
+
+        if width >= 3840 or height >= 2160 then
+            -- 4K or higher
+            debug_log("Detected 4K or higher resolution - using 4x3 layout")
+            return "4x3"
+        elseif width >= 3440 or is_ultrawide then
+            -- Ultrawide or similar
+            debug_log("Detected ultrawide monitor - using 4x2 layout")
+            return "4x2"
+        elseif width >= 2560 or height >= 1440 then
+            -- QHD/WQHD (1440p) or similar
+            debug_log("Detected 1440p resolution - using 3x3 layout")
+            return "3x3"
+        elseif width >= 1920 or height >= 1080 then
+            -- Full HD (1080p) or similar
+            debug_log("Detected 1080p resolution - using 3x2 layout")
+            return "3x2"
+        else
+            -- Smaller resolutions
+            debug_log("Detected smaller resolution - using 2x2 layout")
+            return "2x2"
+        end
     end
 end
 
@@ -471,7 +668,7 @@ function create_key_map(rows, cols)
     rows = math.min(rows, #available_rows)
     cols = math.min(cols, 5) -- Max 5 columns from each row
 
-    log("Creating key map for", rows, "×", cols, "grid")
+    debug_log("Creating key map for", rows, "×", cols, "grid")
 
     for r = 1, rows do
         mapping[r] = {}
@@ -483,17 +680,19 @@ function create_key_map(rows, cols)
 
     return mapping
 end
-
 -- Create a tile based on grid coordinates
 local function create_tile_from_grid_coords(screen, grid_coords, rows, cols)
+    -- Get the screen's absolute frame
     local display_rect = screen:frame()
     local w = display_rect.w
     local h = display_rect.h
     local x = display_rect.x
     local y = display_rect.y
 
-    local col_width = w / cols
-    local row_height = h / rows
+    if tiler.config.debug then
+        print(string.format("[TilerDebug] Creating tile on screen %s with frame: x=%.1f, y=%.1f, w=%.1f, h=%.1f",
+            screen:name(), x, y, w, h))
+    end
 
     -- Parse grid coordinates like "a1:b2" (top-left to bottom-right)
     local col_start, row_start, col_end, row_end
@@ -556,7 +755,7 @@ local function create_tile_from_grid_coords(screen, grid_coords, rows, cols)
         local col_start_char, row_start_str, col_end_char, row_end_str = grid_coords:match(pattern)
 
         if not col_start_char or not row_start_str then
-            log("Invalid grid coordinates:", grid_coords)
+            debug_log("Invalid grid coordinates:", grid_coords)
             return nil
         end
 
@@ -572,30 +771,36 @@ local function create_tile_from_grid_coords(screen, grid_coords, rows, cols)
             col_end = string.byte(col_end_char) - string.byte('a') + 1
             row_end = tonumber(row_end_str)
         end
+
+        -- Ensure coordinates don't exceed grid bounds
+        col_start = math.max(1, math.min(col_start, cols))
+        row_start = math.max(1, math.min(row_start, rows))
+        col_end = math.max(1, math.min(col_end, cols))
+        row_end = math.max(1, math.min(row_end, rows))
     elseif type(grid_coords) == "table" then
         -- Parse table format like {col_start, row_start, col_end, row_end}
         col_start = grid_coords[1]
         row_start = grid_coords[2]
         col_end = grid_coords[3] or col_start
         row_end = grid_coords[4] or row_start
+
+        -- Ensure coordinates don't exceed grid bounds
+        col_start = math.max(1, math.min(col_start, cols))
+        row_start = math.max(1, math.min(row_start, rows))
+        col_end = math.max(1, math.min(col_end, cols))
+        row_end = math.max(1, math.min(row_end, rows))
     else
-        log("Invalid grid coordinates format:", grid_coords)
+        debug_log("Invalid grid coordinates format:", grid_coords)
         return nil
     end
 
-    -- Calculate pixel coordinates
-    local tile_x = x + (col_start - 1) * col_width
-    local tile_y = y + (row_start - 1) * row_height
-    local tile_width = (col_end - col_start + 1) * col_width
-    local tile_height = (row_end - row_start + 1) * row_height
+    -- Calculate pixel coordinates using our helper function
+    local tile_pos = calculate_tile_position(screen, col_start, row_start, col_end, row_end, rows, cols)
 
-    return {
-        x = tile_x,
-        y = tile_y,
-        width = tile_width,
-        height = tile_height,
-        description = grid_coords
-    }
+    -- Add the description to the returned table
+    tile_pos.description = grid_coords
+
+    return tile_pos
 end
 
 -- Get all tiles for a zone configuration
@@ -608,6 +813,8 @@ local function get_zone_tiles(screen, zone_key, rows, cols)
         config = DEFAULT_ZONE_CONFIGS["default"]
     end
 
+    -- Store the screen in a variable to ensure we're using the right screen for all tiles
+    local target_screen = screen
     local tiles = {}
 
     for _, coords in ipairs(config) do
@@ -628,11 +835,15 @@ local function create_grid_layout(screen, cols, rows, key_map, modifier)
     local x = display_rect.x
     local y = display_rect.y
 
+    -- Store the screen reference for later use
+    local screen_id = screen:id()
+    local screen_name = screen:name()
+
     -- Calculate dimensions for a regular grid
     local col_width = w / cols
     local row_height = h / rows
 
-    log("Grid cell size:", col_width, "×", row_height)
+    debug_log("Grid cell size:", col_width, "×", row_height)
 
     local zones = {}
 
@@ -644,9 +855,10 @@ local function create_grid_layout(screen, cols, rows, key_map, modifier)
 
             if key then
                 local hotkey = modifier and key and {modifier, key}
-                log("Creating zone", zone_id, "with hotkey", key)
+                debug_log("Creating zone", zone_id, "with hotkey", key)
 
-                local zone = Zone.new(zone_id, hotkey):set_description(string.format("Row %d, Col %d", r, c))
+                local zone = Zone.new(zone_id, hotkey, screen):set_description(string.format(
+                    "Row %d, Col %d - Screen: %s", r, c, screen:name()))
 
                 -- Get tile configurations for this zone
                 local zone_tiles = get_zone_tiles(screen, key, rows, cols)
@@ -671,7 +883,8 @@ local function create_grid_layout(screen, cols, rows, key_map, modifier)
 
     -- Create special zone for center
     local center_key = "0"
-    local center_zone = Zone.new("center", {modifier, center_key}):set_description("Center zone")
+    local center_zone = Zone.new("center", {modifier, center_key}, screen):set_description("Center zone - Screen: " ..
+                                                                                               screen:name())
 
     local center_tiles = get_zone_tiles(screen, "0", rows, cols)
     for _, tile in ipairs(center_tiles) do
@@ -699,7 +912,6 @@ local function create_grid_layout(screen, cols, rows, key_map, modifier)
     return mode
 end
 
--- Initialize a screen layout mode using a configuration
 function init_mode(screen, mode_config)
     local grid_cols, grid_rows, key_map, modifier
 
@@ -724,7 +936,7 @@ function init_mode(screen, mode_config)
         modifier = tiler.config.modifier
     end
 
-    log("Initializing", grid_cols, "×", grid_rows, "grid for screen", screen:name())
+    debug_log("Initializing", grid_cols, "×", grid_rows, "grid for screen", screen:name())
 
     -- Create the grid layout
     return create_grid_layout(screen, grid_cols, grid_rows, key_map, modifier)
@@ -736,7 +948,7 @@ end
 
 -- Initialize event listeners
 local function init_listeners()
-    log("Initializing event listeners")
+    debug_log("Initializing event listeners")
 
     -- Window event filter
     tiler._window_watcher = hs.window.filter.new()
@@ -752,7 +964,7 @@ end
 
 -- Initialize the tiler
 local function init()
-    log("Initializing Tiler v" .. tiler._version)
+    debug_log("Initializing Tiler v" .. tiler._version)
 
     -- Set up event listeners
     init_listeners()
@@ -760,17 +972,17 @@ local function init()
     -- Initialize layouts for all screens
     for _, screen in pairs(hs.screen.allScreens()) do
         local screen_name = screen:name()
-        log("Configuring screen:", screen_name)
+        debug_log("Configuring screen:", screen_name)
 
         -- Check for custom configuration for this specific screen
         local mode_config
         if tiler.layouts.custom[screen_name] then
-            log("Using custom layout for screen:", screen_name)
+            debug_log("Using custom layout for screen:", screen_name)
             mode_config = tiler.layouts.custom[screen_name]
         else
             -- Use default configuration based on screen size
             local mode_type = get_mode_for_screen(screen)
-            log("Using default layout:", mode_type)
+            debug_log("Using default layout:", mode_type)
             mode_config = mode_type
         end
 
@@ -780,15 +992,15 @@ local function init()
     -- Add keyboard shortcut to toggle debug mode
     hs.hotkey.bind({"ctrl", "cmd", "shift"}, "D", function()
         tiler.config.debug = not tiler.config.debug
-        log("Debug mode: " .. (tiler.config.debug and "enabled" or "disabled"))
+        debug_log("Debug mode: " .. (tiler.config.debug and "enabled" or "disabled"))
     end)
 
-    log("Tiler initialization complete")
+    debug_log("Tiler initialization complete")
 end
 
 -- Configure a custom layout for a screen
 function tiler.configure_screen(screen_name, config)
-    log("Setting custom configuration for screen:", screen_name)
+    debug_log("Setting custom configuration for screen:", screen_name)
     tiler.layouts.custom[screen_name] = config
 
     -- If the screen is currently connected, apply the config immediately
@@ -802,7 +1014,7 @@ end
 
 -- Configure zone behavior
 function tiler.configure_zone(zone_key, tile_configs)
-    log("Setting custom configuration for zone key:", zone_key)
+    debug_log("Setting custom configuration for zone key:", zone_key)
     tiler.zone_configs[zone_key] = tile_configs
 
     -- Return a function that can be used to trigger a refresh
