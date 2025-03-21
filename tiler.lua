@@ -330,16 +330,44 @@ function Zone:resize_window(window_id)
         debug_log("Zone has no screen assigned, using window's current screen:", target_screen:name())
     end
 
-    -- Apply the tile dimensions to the window, using the screen's frame
-    local frame = {
-        x = tile.x,
-        y = tile.y,
-        w = tile.width,
-        h = tile.height
-    }
+    -- Apply the tile dimensions to the window on the correct screen
+    -- For portrait monitor with negative coordinates, explicitly move to screen first
+    local screen_name = target_screen:name()
+    local is_portrait = target_screen:frame().h > target_screen:frame().w
+    local has_negative_coords = target_screen:frame().x < 0 or target_screen:frame().y < 0
 
-    debug_log("Setting frame for window", window_id, "to", tile:to_string(), "on screen", target_screen:name())
-    window:setFrame(frame)
+    if is_portrait and has_negative_coords then
+        -- Special handling for portrait monitors with negative coordinates
+        debug_log("Special handling for portrait monitor:", screen_name)
+
+        -- Force move to the screen first to ensure we're on the right screen
+        window:moveToScreen(target_screen, false, false, 0)
+
+        -- Then set the position - use a very short delay to ensure the window has time to move
+        hs.timer.doAfter(0.05, function()
+            local frame = {
+                x = tile.x,
+                y = tile.y,
+                w = tile.width,
+                h = tile.height
+            }
+
+            debug_log("Setting frame with delay for window", window_id, "to", tile:to_string(), "on screen",
+                target_screen:name())
+            window:setFrame(frame)
+        end)
+    else
+        -- Normal case - set frame directly
+        local frame = {
+            x = tile.x,
+            y = tile.y,
+            w = tile.width,
+            h = tile.height
+        }
+
+        debug_log("Setting frame for window", window_id, "to", tile:to_string(), "on screen", target_screen:name())
+        window:setFrame(frame)
+    end
 
     return true
 end
@@ -425,6 +453,7 @@ local function calculate_tile_position(screen, col_start, row_start, col_end, ro
         height = tile_height
     }
 end
+
 -- Handle moving a window to a zone or cycling its tile
 -- This is made global (non-local) so hotkey callbacks can access it
 function activate_move_zone(zone_id)
@@ -498,6 +527,13 @@ function activate_move_zone(zone_id)
 
     -- Apply the new tile dimensions
     zone:resize_window(win_id)
+
+    -- For debugging, confirm the new position
+    hs.timer.doAfter(0.1, function()
+        local new_frame = win:frame()
+        debug_log("Position after applying tile: " ..
+                      string.format("x=%.1f, y=%.1f, w=%.1f, h=%.1f", new_frame.x, new_frame.y, new_frame.w, new_frame.h))
+    end)
 end
 
 -- Handle window events (destruction, creation, etc.)
@@ -839,16 +875,36 @@ end
 
 -- Get all tiles for a zone configuration
 local function get_zone_tiles(screen, zone_key, rows, cols)
-    -- Get the configuration for this key
-    local config = tiler.zone_configs[zone_key] or DEFAULT_ZONE_CONFIGS[zone_key]
+    -- Get the screen name
+    local screen_name = screen:name()
+    local config = nil
+
+    -- First check if there are screen-specific configurations
+    if tiler.zone_configs_by_screen then
+        -- Check if there's a config for this specific screen
+        if tiler.zone_configs_by_screen[screen_name] and tiler.zone_configs_by_screen[screen_name][zone_key] then
+            config = tiler.zone_configs_by_screen[screen_name][zone_key]
+            debug_log("Using screen-specific zone config for " .. screen_name .. ", key: " .. zone_key)
+        end
+    end
+
+    -- If no screen-specific config found, check general zone configs
+    if not config then
+        config = tiler.zone_configs[zone_key] or DEFAULT_ZONE_CONFIGS[zone_key]
+    end
 
     -- If no specific config, use the default
     if not config then
         config = DEFAULT_ZONE_CONFIGS["default"]
     end
 
-    -- Store the screen in a variable to ensure we're using the right screen for all tiles
-    local target_screen = screen
+    -- If the config is an empty table, return empty tiles
+    if config and #config == 0 then
+        debug_log("Zone " .. zone_key .. " disabled for screen " .. screen_name)
+        return {}
+    end
+
+    -- Process the tiles
     local tiles = {}
 
     for _, coords in ipairs(config) do
@@ -1172,6 +1228,11 @@ function tiler.start(config)
             for key, configs in pairs(config.zone_configs) do
                 tiler.zone_configs[key] = configs
             end
+        end
+
+        -- Add support for screen-specific zone configurations
+        if config.zone_configs_by_screen then
+            tiler.zone_configs_by_screen = config.zone_configs_by_screen
         end
     end
 

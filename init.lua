@@ -15,6 +15,32 @@ local mash_app = {"shift", "ctrl"}
 local mash_shift = {"shift", "ctrl", "cmd"}
 local HYPER = {"shift", "ctrl", "alt", "cmd"}
 
+-- Custom zone configs for portrait mode
+local portrait_zones = {
+    -- Top section
+    ["y"] = {"a1", "a1:a2"}, -- Top cell, and top two cells
+
+    -- Middle section
+    ["h"] = {"a2", "a1:a3"}, -- Middle cell, and entire column
+
+    -- Bottom section
+    ["n"] = {"a3", "a2:a3"}, -- Bottom cell, and bottom two cells
+
+    -- Disable other zones by setting them to empty tables
+    ["u"] = {},
+    ["j"] = {},
+    ["m"] = {},
+    ["i"] = {},
+    ["k"] = {},
+    [","] = {},
+    ["o"] = {},
+    ["l"] = {},
+    ["."] = {},
+
+    -- Center key still works for full-screen
+    ["0"] = {"a1:a3", "a2", "a1"} -- Full column, middle, top
+}
+
 -- Cache frequently accessed functions
 local gridSnap = hs.grid.snap
 local appLaunchOrFocus = hs.application.launchOrFocus
@@ -321,6 +347,10 @@ local function init()
                     rows = 3
                 } -- 1×3 for portrait LG
             }
+        },
+        zone_configs_by_screen = {
+            -- Portrait configuration for LG screen
+            ["LG IPS QHD"] = portrait_zones
         }
     }
 
@@ -336,3 +366,112 @@ end
 
 -- Start the configuration
 init()
+
+-- Add this code at the end of your init.lua
+-- Simple direct hotkeys for the LG portrait monitor
+-- These bypass the tiler system completely for testing
+local LG_frames = {
+    top = {
+        x = -1440,
+        y = -293,
+        w = 1440,
+        h = 845
+    }, -- Top third
+    top_middle = {
+        x = -1440,
+        y = -293,
+        w = 1440,
+        h = 1690
+    }, -- Top two-thirds
+    middle = {
+        x = -1440,
+        y = 552,
+        w = 1440,
+        h = 845
+    }, -- Middle third only
+    full = {
+        x = -1440,
+        y = -293,
+        w = 1440,
+        h = 2535
+    }, -- Full height
+    bottom = {
+        x = -1440,
+        y = 1397,
+        w = 1440,
+        h = 845
+    }, -- Bottom third
+    bottom_middle = {
+        x = -1440,
+        y = 552,
+        w = 1440,
+        h = 1690
+    } -- Bottom two-thirds
+}
+
+-- Alternative hotkeys using F1-F6 for direct positioning
+-- (to avoid any possible conflict with your existing setup)
+hs.hotkey.bind({}, "f1", function()
+    local win = hs.window.focusedWindow()
+    if win then
+        win:setFrame(LG_frames.top)
+        hs.alert.show("Top third")
+    end
+end)
+
+hs.hotkey.bind({}, "f2", function()
+    local win = hs.window.focusedWindow()
+    if win then
+        win:setFrame(LG_frames.top_middle)
+        hs.alert.show("Top two-thirds")
+    end
+end)
+
+hs.hotkey.bind({}, "f3", function()
+    local win = hs.window.focusedWindow()
+    if win then
+        win:setFrame(LG_frames.middle)
+        hs.alert.show("Middle third")
+    end
+end)
+
+hs.hotkey.bind({}, "f4", function()
+    local win = hs.window.focusedWindow()
+    if win then
+        win:setFrame(LG_frames.full)
+        hs.alert.show("Full height")
+    end
+end)
+
+hs.hotkey.bind({}, "f5", function()
+    local win = hs.window.focusedWindow()
+    if win then
+        win:setFrame(LG_frames.bottom)
+        hs.alert.show("Bottom third")
+    end
+end)
+
+hs.hotkey.bind({}, "f6", function()
+    local win = hs.window.focusedWindow()
+    if win then
+        win:setFrame(LG_frames.bottom_middle)
+        hs.alert.show("Bottom two-thirds")
+    end
+end)
+
+-- Screen info display (simpler version)
+hs.hotkey.bind({"ctrl", "alt", "cmd"}, "i", function()
+    local output = {"Screen Information:"}
+
+    for i, screen in ipairs(hs.screen.allScreens()) do
+        local frame = screen:frame()
+        local name = screen:name()
+        local id = screen:id()
+
+        table.insert(output, string.format("\nScreen %d: %s (ID: %d)", i, name, id))
+        table.insert(output, string.format("Frame: x=%.1f, y=%.1f, w=%.1f, h=%.1f", frame.x, frame.y, frame.w, frame.h))
+    end
+
+    hs.alert.show(table.concat(output, "\n"), 5)
+end)
+
