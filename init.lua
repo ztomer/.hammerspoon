@@ -3,12 +3,6 @@ require "pomodoor"
 -- This is how you should include the tiler module
 local tiler = require "tiler"
 
--- Initialize constants
-local GRID_MARGIN_X = 5
-local GRID_MARGIN_Y = 5
-local GRID_WIDTH = 4
-local GRID_HEIGHT = 3
-
 -- Key combinations
 local mash = {"ctrl", "cmd"}
 local mash_app = {"shift", "ctrl"}
@@ -42,7 +36,6 @@ local portrait_zones = {
 }
 
 -- Cache frequently accessed functions
-local gridSnap = hs.grid.snap
 local appLaunchOrFocus = hs.application.launchOrFocus
 
 -- Pre-compile application lists for faster lookups
@@ -157,26 +150,6 @@ local function toggle_app(app)
 end
 
 --[[
-  Snaps a window to the grid
-
-  @param window (hs.window) The window to snap
-]]
-local function snap_to_grid(window)
-    if window and window:isStandard() and window:isVisible() then
-        gridSnap(window)
-    end
-end
-
---[[
-  Snaps all visible windows to the grid
-]]
-local function snap_all_windows()
-    for _, window in ipairs(hs.window.visibleWindows()) do
-        snap_to_grid(window)
-    end
-end
-
---[[
   Displays help screen with keyboard shortcuts
 ]]
 local function display_help()
@@ -197,63 +170,13 @@ local function display_help()
     hs.alert.show(help_text, 2)
 end
 
---[[
-  Moves all windows outside the view into the current view
-]]
-local function rescue_windows()
-    local screen = hs.screen.mainScreen()
-    local screenFrame = screen:fullFrame()
-
-    for _, win in ipairs(hs.window.visibleWindows()) do
-        if not win:frame():inside(screenFrame) then
-            win:moveToScreen(screen, true, true)
-        end
-    end
-end
-
 -- ===== Initialization Functions =====
-
-local function init_old_wm_binding()
-    -- Grid size adjustments
-    hs.hotkey.bind(mash, '=', function()
-        hs.grid.adjustWidth(1)
-    end)
-    hs.hotkey.bind(mash, '-', function()
-        hs.grid.adjustWidth(-1)
-    end)
-    hs.hotkey.bind(mash, ']', function()
-        hs.grid.adjustHeight(1)
-    end)
-    hs.hotkey.bind(mash, '[', function()
-        hs.grid.adjustHeight(-1)
-    end)
-
-    hs.hotkey.bind(mash, 'N', hs.grid.pushWindowNextScreen)
-    hs.hotkey.bind(mash, 'P', hs.grid.pushWindowPrevScreen)
-    -- Window movement
-    hs.hotkey.bind(mash, 'H', hs.grid.pushWindowLeft)
-    hs.hotkey.bind(mash, 'J', hs.grid.pushWindowDown)
-    hs.hotkey.bind(mash, 'K', hs.grid.pushWindowUp)
-    hs.hotkey.bind(mash, 'L', hs.grid.pushWindowRight)
-    hs.hotkey.bind(mash, 'R', rescue_windows)
-    -- Window resizing
-    hs.hotkey.bind(mash, 'Y', hs.grid.resizeWindowThinner)
-    hs.hotkey.bind(mash, 'U', hs.grid.resizeWindowShorter)
-    hs.hotkey.bind(mash, 'I', hs.grid.resizeWindowTaller)
-    hs.hotkey.bind(mash, 'O', hs.grid.resizeWindowWider)
-    hs.hotkey.bind(mash, 'M', hs.grid.maximizeWindow)
-
-end
 
 --[[
   Initializes window management keybindings
 ]]
 local function init_wm_binding()
     hs.hotkey.bind(mash_app, '/', display_help)
-    -- hs.hotkey.bind(HYPER, ";", function()
-    --     gridSnap(hs.window.focusedWindow())
-    -- end)
-    hs.hotkey.bind(HYPER, "g", snap_all_windows)
 
     -- Window focus
     hs.hotkey.bind(mash_shift, 'H', function()
@@ -304,26 +227,12 @@ local function init_custom_binding()
 end
 
 --[[
-  Initializes window watcher
-]]
-local function init_watcher()
-    watcher:subscribe(hs.window.filter.windowCreated, snap_to_grid)
-    watcher:subscribe(hs.window.filter.windowFocused, snap_to_grid)
-end
-
---[[
   Main initialization function
 ]]
 local function init()
 
     -- Disable animation for speed
     hs.window.animationDuration = 0
-
-    -- Configure grid
-    hs.grid.MARGINX = GRID_MARGIN_X
-    hs.grid.MARGINY = GRID_MARGIN_Y
-    hs.grid.GRIDWIDTH = GRID_WIDTH
-    hs.grid.GRIDHEIGHT = GRID_HEIGHT
 
     -- Load Spoons
     hs.loadSpoon("RoundedCorners")
@@ -361,7 +270,6 @@ local function init()
     init_wm_binding()
     init_app_binding()
     init_custom_binding()
-    init_watcher()
 end
 
 -- Start the configuration
