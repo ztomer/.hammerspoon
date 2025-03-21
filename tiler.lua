@@ -122,19 +122,19 @@ local DEFAULT_ZONE_CONFIGS = {
 
     -- Left side of keyboard - left side of screen
     ["y"] = {"a1:a2", "a1", "a1:b2"}, -- Top-left region with added a1:b2 (semi-quarter)
-    ["h"] = {"a1:b3", "a1:a3", "a1:c3"}, -- Left side in various widths
+    ["h"] = {"a1:b3", "a1:a3", "a1:c3", "a2"}, -- Left side in various widths
     ["n"] = {"a3", "a2:a3", "a3:b3"}, -- Bottom-left with added a3:b3 (semi-quarter)
     ["u"] = {"b1:b3", "b1:b2", "b1"}, -- Middle column region variations
     ["j"] = {"b1:c3", "b1:b3", "b2"}, -- Middle area variations
-    ["m"] = {"c1:c3", "c2:c3", "c3"}, -- Right-middle column variations
+    ["m"] = {"b1:b3", "b2:c3", "b3"}, -- Right-middle column variations
 
     -- Right side of keyboard - right side of screen
-    ["i"] = {"d1:d3", "d1:d2", "d1"}, -- Right column variations
-    ["k"] = {"c1:d3", "d1:d3", "c2"}, -- Right side variations
-    [","] = {"d3", "d2:d3"}, -- Bottom-right corner/region
-    ["o"] = {"d1", "c1:d1", "c1:d2"}, -- Top-right with added c1:d2 (semi-quarter)
-    ["l"] = {"d1:d3", "c1:d3"}, -- Right columns
-    ["."] = {"c3:d3", "d3", "c2:d3"}, -- Bottom-right with added c2:d3 (semi-quarter)
+    ["i"] = {"d1:d3", "d1:d2", "d1"}, -- Right column variations (mirrors "u")
+    ["k"] = {"c1:d3", "c1:c3", "c2"}, -- Right side variations (mirrors "j")
+    [","] = {"d1:d3", "d2:d3", "d3"}, -- Bottom-right corner/region (mirrors "m")
+    ["o"] = {"c1:d1", "d1", "c1:d2"}, -- Top-right with added c1:d2 (semi-quarter) (mirrors "y")
+    ["l"] = {"d1:d3", "c1:d3", "b1:d3", "d2"}, -- Right columns (mirrors "h")
+    ["."] = {"d3", "d2:d3", "c3:d3"}, -- Bottom-right with added c2:d3 (semi-quarter)  (mirrors "n")
 
     -- Center key for center position
     ["0"] = {"b2:c2", "b1:c3", "a1:d3"}, -- Quarter, two-thirds, full screen
