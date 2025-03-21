@@ -173,34 +173,6 @@ end
 -- ===== Initialization Functions =====
 
 --[[
-  Initializes window management keybindings
-]]
-local function init_wm_binding()
-    hs.hotkey.bind(mash_app, '/', display_help)
-
-    -- Window focus
-    hs.hotkey.bind(mash_shift, 'H', function()
-        hs.window.focusedWindow():focusWindowWest()
-    end)
-    hs.hotkey.bind(mash_shift, 'L', function()
-        hs.window.focusedWindow():focusWindowEast()
-    end)
-    hs.hotkey.bind(mash_shift, 'K', function()
-        hs.window.focusedWindow():focusWindowNorth()
-    end)
-    hs.hotkey.bind(mash_shift, 'J', function()
-        hs.window.focusedWindow():focusWindowSouth()
-    end)
-
-    hs.hotkey.bind(HYPER, '/', hs.hints.windowHints)
-
-    -- Pomodoro bindings
-    hs.hotkey.bind(mash, '9', pom_enable)
-    hs.hotkey.bind(mash, '0', pom_disable)
-    hs.hotkey.bind(mash_shift, '0', pom_reset_work)
-end
-
---[[
   Initializes application shortcut keybindings
 ]]
 local function init_app_binding()
@@ -221,6 +193,14 @@ end
   Initializes custom keybindings
 ]]
 local function init_custom_binding()
+    hs.hotkey.bind(mash_app, '/', display_help)
+    hs.hotkey.bind(HYPER, '/', hs.hints.windowHints)
+
+    -- Pomodoro bindings
+    hs.hotkey.bind(mash, '9', pom_enable)
+    hs.hotkey.bind(mash, '0', pom_disable)
+    hs.hotkey.bind(mash_shift, '0', pom_reset_work)
+
     hs.hotkey.bind(HYPER, "=", function()
         toggle_app("Activity Monitor")
     end)
@@ -272,7 +252,6 @@ local function init()
     tiler.start(tiler_config)
     tiler.setup_screen_movement_keys()
 
-    init_wm_binding()
     init_app_binding()
     init_custom_binding()
 end

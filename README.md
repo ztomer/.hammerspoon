@@ -11,6 +11,9 @@ A powerful window management system that allows defining zones on the screen and
 - **Customizable Configurations**: Easily tailor layouts to your specific needs
 - **Cycle Through Positions**: Quickly cycle a window through different preset sizes
 - **Window Margins**: Add configurable spacing between windows and screen edges
+- **Window Focus Control**: Quickly focus and cycle through windows in specific zones
+- **Smart Window Mapping**: Automatically detect and map existing windows to appropriate zones
+- **Cross-Screen Focus Navigation**: Move focus between screens with keyboard shortcuts
 - **Negative Coordinate Support**: Properly handle multi-monitor setups with negative screen coordinates
 - **Robust State Tracking**: Maintain window positions even when rapidly switching between zones
 
@@ -61,9 +64,14 @@ Each key corresponds to a specific zone on the screen grid:
 #### Special Positions
 - `0`: Center cycling: center quarter → center two-thirds → full screen
 
-### Screen Movement
+### Window Movement Between Screens
 - `Ctrl+Cmd+p`: Move current window to the next screen
 - `Ctrl+Cmd+;`: Move current window to the previous screen
+
+### Focus Management
+- `Shift+Ctrl+Cmd+[zone key]`: Focus on windows in that zone (cycles through windows)
+- `Shift+Ctrl+Cmd+p`: Move focus to next screen
+- `Shift+Ctrl+Cmd+;`: Move focus to previous screen
 
 ## Screen-Specific Layouts
 
@@ -87,6 +95,7 @@ Here's a complete configuration example for your `init.lua`:
 local tiler_config = {
     debug = true,                  -- Enable debug logging
     modifier = {"ctrl", "cmd"},    -- Set default modifier keys
+    focus_modifier = {"shift", "ctrl", "cmd"}, -- Modifier keys for focus commands
 
     -- Window margin settings
     margins = {
@@ -94,6 +103,9 @@ local tiler_config = {
         size = 8,                  -- Use 8 pixels for margins
         screen_edge = true         -- Apply margins to screen edges too
     },
+
+    -- Focus settings
+    flash_on_focus = true,         -- Visual flash when focusing windows
 
     -- Custom layouts for specific screens
     layouts = {
@@ -145,6 +157,7 @@ tiler.layouts.custom["DELL U3223QE"] = { cols = 4, rows = 3 }
 ```lua
 -- Change the default modifier keys
 tiler.config.modifier = {"ctrl", "alt"}
+tiler.config.focus_modifier = {"shift", "ctrl", "alt"}
 ```
 
 ### Configure Window Margins
@@ -204,6 +217,30 @@ You can define regions using:
 2. Named positions like `"center"`, `"left-half"`, `"top-half"`, etc.
 3. Table coordinates like `{1,1,2,2}` for programmatic definitions
 
+## Additional Features
+
+### Window Mapping
+
+The tiler automatically attempts to map existing windows to appropriate zones when it starts. You can also trigger this manually:
+
+```lua
+-- Manually map all existing windows to zones
+hs.hotkey.bind({"ctrl", "cmd", "shift"}, "M", function()
+    local count = tiler.map_existing_windows()
+    hs.alert.show("Mapped " .. count .. " windows to zones")
+end)
+```
+
+### Focus Control
+
+The focus control feature allows you to quickly switch between windows in a particular zone or across screens:
+
+- `Shift+Ctrl+Cmd+[zone key]` focuses on windows in that zone and cycles through them
+- `Shift+Ctrl+Cmd+p` moves focus to the next screen
+- `Shift+Ctrl+Cmd+;` moves focus to the previous screen
+
+This makes it easy to navigate between applications without using the mouse, particularly in complex multi-screen setups.
+
 ## Troubleshooting
 
 If windows are not positioning correctly:
@@ -260,6 +297,75 @@ hs.hotkey.bind({"ctrl", "alt", "cmd"}, "I", function()
     hs.alert.show(table.concat(output, "\n"), 5)
 end)
 ```
+
+## Focus Zone Feature
+
+The Focus Zone feature allows you to quickly switch between windows in a particular zone using keyboard shortcuts.
+
+### Focus Zone Keyboard Shortcuts
+
+By default, focusing on zone windows uses the `Shift+Ctrl+Cmd` modifier combined with the zone key:
+
+- `Shift+Ctrl+Cmd+y`: Focus on windows in the top-left zone
+- `Shift+Ctrl+Cmd+h`: Focus on windows in the left zone
+- `Shift+Ctrl+Cmd+n`: Focus on windows in the bottom-left zone
+- ... and so on for all zone keys
+
+### Behavior
+
+- Pressing a focus zone shortcut will switch to the topmost window in that zone
+- If the currently focused window is already in that zone, it cycles to the next window
+- When focusing, a brief highlight flash provides visual feedback (can be disabled)
+- Focus is screen-specific: you only focus windows on your current screen
+
+### Screen Focus Movement
+
+The Screen Focus movement feature allows you to quickly move focus between screens:
+
+- `Shift+Ctrl+Cmd+p`: Move focus to the next screen
+- `Shift+Ctrl+Cmd+;`: Move focus to the previous screen
+
+This complements the existing window movement functionality and makes it easy to work with multi-monitor setups.
+
+### Configuration
+
+You can customize the focus zone feature in your configuration:
+
+```lua
+local tiler_config = {
+    -- Other settings...
+
+    -- Focus zone settings
+    focus_modifier = {"shift", "ctrl", "cmd"}, -- Modifier keys for focusing
+    flash_on_focus = true,                     -- Flash window when focused
+}
+```
+
+### Use Cases
+
+The focus zone feature is particularly useful for:
+
+- Quickly switching between related windows (e.g., between editor and terminal in a coding zone)
+- Managing many windows arranged in specific zones
+- Creating a workflow that combines window positioning and focus management
+- Navigating across multiple monitors without using the mouse
+
+## Planning
+
+- [x] Focus on Zone keyboard shortcut (Switch to the topmost window in a zone and cycle through them)
+- [x] Cross-screen focus navigation (Move focus between screens with keyboard shortcuts)
+- [x] Smart window mapping (Automatically detect and map existing windows to appropriate zones)
+- [ ] Application-aware layouts (Save preferred zones for specific applications)
+- [ ] Automatically arrange windows based on predefined layouts
+- [ ] Dynamic row and column resizing
+- [ ] Zen mode (minimize all windows other than the active one)
+- [ ] Automatic window resizing based on content
+- [ ] Save and load window layouts
+- [ ] Support for Mac spaces
+- [ ] Window stacking within zones (keep multiple windows in a single zone and cycle through them)
+- [ ] Grid visualization overlay (display the grid layout temporarily when positioning windows)
+- [ ] Mouse-based zone selection (Shift+drag to select a custom zone)
+- [ ] Zone presets (quickly switch between different zone layouts)
 
 ## Credits
 

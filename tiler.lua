@@ -836,6 +836,8 @@ local function handle_display_change()
         end
     end)
 end
+
+-- Fixed version of focus_zone_windows function that works with all screens
 function focus_zone_windows(zone_id)
     debug_log("Focusing on windows in zone", zone_id)
 
@@ -848,34 +850,62 @@ function focus_zone_windows(zone_id)
 
     local current_screen = current_win:screen()
     local current_screen_id = current_screen:id()
+    local screen_name = current_screen:name()
 
-    -- First, look for the exact screen-specific zone
+    debug_log("Looking for zone", zone_id, "on screen", screen_name, "(ID:", current_screen_id, ")")
+
+    -- First try the screen-specific zone ID
     local screen_specific_id = zone_id .. "_" .. current_screen_id
     local target_zone = nil
 
-    -- Try to find a zone that exactly matches the id AND is on this screen
+    -- Check if we have windows in this exact zone
     if tiler._zone_windows[screen_specific_id] and #tiler._zone_windows[screen_specific_id] > 0 then
         debug_log("Found exact screen-specific zone:", screen_specific_id)
         target_zone = screen_specific_id
     else
-        -- Look for any zone with this base ID that has windows on this screen
+        -- Look for other zones with this base ID on the current screen
         for id, windows in pairs(tiler._zone_windows) do
-            if #windows > 0 and (id == zone_id or id:match("^" .. zone_id .. "_")) then
-                -- Verify this zone is on the current screen
-                local zone_obj = tiler._zone_id2zone[id]
-                if zone_obj and zone_obj.screen and zone_obj.screen:id() == current_screen_id then
-                    debug_log("Found matching zone on current screen:", id)
-                    target_zone = id
-                    break
+            if #windows > 0 then
+                -- Check if zone ID matches our target (either directly or as base of screen-specific ID)
+                if id == zone_id or id:match("^" .. zone_id .. "_") then
+                    -- Check if this zone is on our current screen
+                    local zone = tiler._zone_id2zone[id]
+                    if zone and zone.screen and zone.screen:id() == current_screen_id then
+                        debug_log("Found matching zone on current screen:", id)
+                        target_zone = id
+                        break
+                    end
                 end
             end
         end
     end
 
     if not target_zone then
-        debug_log("No matching zone found with windows on screen", current_screen:name())
+        -- Fallback: look for zone with this ID that isn't screen-specific
+        if tiler._zone_windows[zone_id] and #tiler._zone_windows[zone_id] > 0 then
+            debug_log("Found base zone (not screen-specific):", zone_id)
+            -- Check if any windows in this zone are on our screen
+            local has_windows_on_screen = false
+            for _, win_id in ipairs(tiler._zone_windows[zone_id]) do
+                local win = hs.window.get(win_id)
+                if win and win:screen():id() == current_screen_id then
+                    has_windows_on_screen = true
+                    break
+                end
+            end
+
+            if has_windows_on_screen then
+                target_zone = zone_id
+            end
+        end
+    end
+
+    if not target_zone then
+        debug_log("No matching zone found with windows on screen", screen_name)
         return
     end
+
+    debug_log("Using zone", target_zone, "for focus with", #tiler._zone_windows[target_zone], "windows")
 
     -- Get windows for this zone
     local windows = tiler._zone_windows[target_zone]
@@ -888,35 +918,38 @@ function focus_zone_windows(zone_id)
     local valid_windows = {}
     for _, win_id in ipairs(windows) do
         local win = hs.window.get(win_id)
-        if win and win:isStandard() and not win:isMinimized() and win:screen():id() == current_screen_id then
-            table.insert(valid_windows, win_id)
+        if win and win:isStandard() and not win:isMinimized() then
+            -- Check if this window is on the current screen
+            if win:screen():id() == current_screen_id then
+                table.insert(valid_windows, win_id)
+            end
         end
     end
 
     if #valid_windows == 0 then
-        debug_log("No valid windows found in zone", target_zone, "on screen", current_screen:name())
+        debug_log("No valid windows found in zone", target_zone, "on screen", screen_name)
         return
     end
 
-    -- Update the zone's window list to only include valid windows on this screen
-    tiler._zone_windows[target_zone] = valid_windows
-    windows = valid_windows
+    -- Replace the zone's window list with only valid windows on this screen
+    -- We'll create a screen-specific key for tracking this zone's windows on this screen
+    local screen_focus_key = target_zone .. "_screen_" .. current_screen_id
 
     -- Get the window to focus
     local win_id = current_win:id()
     local idx = 1
 
-    -- Initialize focus index tracking for this zone if needed
+    -- Initialize focus index tracking
     if not tiler._window_focus_idx then
         tiler._window_focus_idx = {}
     end
-    if not tiler._window_focus_idx[target_zone] then
-        tiler._window_focus_idx[target_zone] = 0
+    if not tiler._window_focus_idx[screen_focus_key] then
+        tiler._window_focus_idx[screen_focus_key] = 0
     end
 
     -- If current window is in this zone, use its index to find next window
     local current_index = nil
-    for i, wid in ipairs(windows) do
+    for i, wid in ipairs(valid_windows) do
         if wid == win_id then
             current_index = i
             break
@@ -925,20 +958,20 @@ function focus_zone_windows(zone_id)
 
     if current_index then
         -- Advance to next window in the zone
-        idx = (current_index % #windows) + 1
+        idx = (current_index % #valid_windows) + 1
     else
         -- Not in this zone, use the zone's focus index
-        idx = ((tiler._window_focus_idx[target_zone] % #windows) + 1)
+        idx = ((tiler._window_focus_idx[screen_focus_key] % #valid_windows) + 1)
     end
 
-    -- Update focus index for this zone
-    tiler._window_focus_idx[target_zone] = idx
+    -- Update focus index for this zone on this screen
+    tiler._window_focus_idx[screen_focus_key] = idx
 
-    local focus_window = hs.window.get(windows[idx])
+    local focus_window = hs.window.get(valid_windows[idx])
     if focus_window then
         focus_window:focus()
-        debug_log("Focused window", windows[idx], "in zone", target_zone, "(", idx, "of", #windows, ")", "on screen",
-            current_screen:name())
+        debug_log("Focused window", valid_windows[idx], "in zone", target_zone, "(", idx, "of", #valid_windows, ")",
+            "on screen", screen_name)
 
         -- Visual feedback
         if tiler.config.flash_on_focus then
@@ -959,11 +992,120 @@ function focus_zone_windows(zone_id)
             end)
         end
     else
-        debug_log("Failed to focus window", windows[idx], "- window may have been closed")
-
-        -- Clean up invalid window entry
-        table.remove(windows, idx)
+        debug_log("Failed to focus window", valid_windows[idx], "- window may have been closed")
     end
+end
+
+-- Function to move focus to next/previous screen
+function tiler.focus_next_screen()
+    debug_log("Moving focus to next screen")
+
+    -- Get all screens
+    local screens = hs.screen.allScreens()
+    if #screens < 2 then
+        debug_log("Only one screen detected, focus move canceled")
+        return
+    end
+
+    -- Get current screen
+    local current_screen = hs.screen.mainScreen()
+    local current_screen_id = current_screen:id()
+
+    -- Find next screen
+    local next_screen = nil
+    for i, screen in ipairs(screens) do
+        if screen:id() == current_screen_id then
+            next_screen = screens[(i % #screens) + 1]
+            break
+        end
+    end
+
+    if not next_screen then
+        debug_log("Couldn't identify next screen")
+        return
+    end
+
+    -- Find windows on the next screen
+    local next_windows = {}
+    local all_windows = hs.window.allWindows()
+
+    for _, win in ipairs(all_windows) do
+        if win:isStandard() and not win:isMinimized() and win:screen():id() == next_screen:id() then
+            table.insert(next_windows, win)
+        end
+    end
+
+    if #next_windows == 0 then
+        debug_log("No windows found on next screen:", next_screen:name())
+        return
+    end
+
+    -- Focus the frontmost window on that screen
+    table.sort(next_windows, function(a, b)
+        return a:id() > b:id() -- Usually more recent windows have higher IDs
+    end)
+
+    next_windows[1]:focus()
+    debug_log("Focused window", next_windows[1]:id(), "on screen", next_screen:name())
+end
+
+function tiler.focus_previous_screen()
+    debug_log("Moving focus to previous screen")
+
+    -- Get all screens
+    local screens = hs.screen.allScreens()
+    if #screens < 2 then
+        debug_log("Only one screen detected, focus move canceled")
+        return
+    end
+
+    -- Get current screen
+    local current_screen = hs.screen.mainScreen()
+    local current_screen_id = current_screen:id()
+
+    -- Find previous screen
+    local prev_screen = nil
+    for i, screen in ipairs(screens) do
+        if screen:id() == current_screen_id then
+            prev_screen = screens[((i - 2) % #screens) + 1]
+            break
+        end
+    end
+
+    if not prev_screen then
+        debug_log("Couldn't identify previous screen")
+        return
+    end
+
+    -- Find windows on the previous screen
+    local prev_windows = {}
+    local all_windows = hs.window.allWindows()
+
+    for _, win in ipairs(all_windows) do
+        if win:isStandard() and not win:isMinimized() and win:screen():id() == prev_screen:id() then
+            table.insert(prev_windows, win)
+        end
+    end
+
+    if #prev_windows == 0 then
+        debug_log("No windows found on previous screen:", prev_screen:name())
+        return
+    end
+
+    -- Focus the frontmost window on that screen
+    table.sort(prev_windows, function(a, b)
+        return a:id() > b:id() -- Usually more recent windows have higher IDs
+    end)
+
+    prev_windows[1]:focus()
+    debug_log("Focused window", prev_windows[1]:id(), "on screen", prev_screen:name())
+end
+
+-- Function to set up screen focus movement hotkeys
+function tiler.setup_screen_focus_keys()
+    hs.hotkey.bind(tiler.config.focus_modifier, "p", tiler.focus_next_screen)
+    hs.hotkey.bind(tiler.config.focus_modifier, ";", tiler.focus_previous_screen)
+    debug_log("Screen focus movement keys set up")
 end
 
 -- Determine which layout mode to use based on screen properties
@@ -1820,6 +1962,9 @@ function tiler.start(config)
 
     -- Setup screen movement keys
     tiler.setup_screen_movement_keys()
+
+    -- Setup screen focus movement keys
+    tiler.setup_screen_focus_keys()
 
     -- Map existing windows (with slight delay to ensure layouts are fully initialized)
     hs.timer.doAfter(0.5, function()
