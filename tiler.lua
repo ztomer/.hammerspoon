@@ -114,9 +114,9 @@ local DEFAULT_ZONE_CONFIGS = {
     -- Format: key = { array of grid coordinates to cycle through }
 
     -- Left side of keyboard - left side of screen
-    ["y"] = {"a1:a2", "a1"}, -- Top-left region
+    ["y"] = {"a1:a2", "a1", "a1:b2"}, -- Top-left region with added a1:b2 (semi-quarter)
     ["h"] = {"a1:b3", "a1:a3", "a1:c3"}, -- Left side in various widths
-    ["n"] = {"a3", "a2:a3"}, -- Bottom-left corner/region
+    ["n"] = {"a3", "a2:a3", "a3:b3"}, -- Bottom-left with added a3:b3 (semi-quarter)
     ["u"] = {"b1:b3", "b1:b2", "b1"}, -- Middle column region variations
     ["j"] = {"b1:c3", "b1:b3", "b2"}, -- Middle area variations
     ["m"] = {"c1:c3", "c2:c3", "c3"}, -- Right-middle column variations
@@ -125,9 +125,9 @@ local DEFAULT_ZONE_CONFIGS = {
     ["i"] = {"d1:d3", "d1:d2", "d1"}, -- Right column variations
     ["k"] = {"c1:d3", "d1:d3", "c2"}, -- Right side variations
     [","] = {"d3", "d2:d3"}, -- Bottom-right corner/region
-    ["o"] = {"d1", "c1:d1"}, -- Top-right cell/region
+    ["o"] = {"d1", "c1:d1", "c1:d2"}, -- Top-right with added c1:d2 (semi-quarter)
     ["l"] = {"d1:d3", "c1:d3"}, -- Right columns
-    ["."] = {"c3:d3", "d3"}, -- Bottom-right region/cell
+    ["."] = {"c3:d3", "d3", "c2:d3"}, -- Bottom-right with added c2:d3 (semi-quarter)
 
     -- Center key for center position
     ["0"] = {"b2:c2", "b1:c3", "a1:d3"}, -- Quarter, two-thirds, full screen
@@ -392,7 +392,6 @@ local function calculate_tile_position(screen, col_start, row_start, col_end, ro
         height = tile_height
     }
 end
-
 -- Handle moving a window to a zone or cycling its tile
 -- This is made global (non-local) so hotkey callbacks can access it
 function activate_move_zone(zone_id)
@@ -411,51 +410,35 @@ function activate_move_zone(zone_id)
 
     debug_log("Window is on screen: " .. current_screen:name() .. " (ID: " .. current_screen_id .. ")")
 
-    -- Find zones with matching ID specifically on the current screen
-    local screen_specific_zones = {}
-    local generic_zones = {}
+    -- First look for zones that match our ID and are specifically on this screen
+    local matching_zones = {}
 
-    -- Look for zones with our ID
+    -- Find zones with exact matching screen ID
     for id, zone in pairs(tiler._zone_id2zone) do
-        -- Check for exact zone_id match
-        if id == zone_id then
-            -- If zone has a screen, check if it matches current screen
-            if zone.screen and zone.screen:id() == current_screen_id then
-                -- Zone is on current screen - highest priority
-                table.insert(screen_specific_zones, zone)
-                debug_log("Found zone on current screen: " .. id)
-            else
-                -- Zone is not on current screen or doesn't have screen info
-                table.insert(generic_zones, zone)
-                debug_log("Found generic zone: " .. id)
+        if zone.screen and zone.screen:id() == current_screen_id then
+            -- Check for basic zone ID match
+            if id == zone_id then
+                debug_log("Found exact zone match on current screen: " .. id)
+                table.insert(matching_zones, zone)
             end
-        end
 
-        -- Also check for screen-specific zone IDs like "y_12345"
-        if id:match("^" .. zone_id .. "_%d+$") then
-            -- If zone has a screen, check if it matches current screen
-            if zone.screen and zone.screen:id() == current_screen_id then
-                -- Zone is on current screen with ID like "y_12345" - high priority
-                table.insert(screen_specific_zones, zone)
-                debug_log("Found screen-specific zone: " .. id)
+            -- Check for screen-specific IDs like "y_12345"
+            if id:match("^" .. zone_id .. "_%d+$") then
+                debug_log("Found screen-specific match on current screen: " .. id)
+                table.insert(matching_zones, zone)
             end
         end
     end
 
-    -- Choose the best zone, preferring current screen
-    local zone = nil
-    if #screen_specific_zones > 0 then
-        -- Use first zone specifically on this screen
-        zone = screen_specific_zones[1]
-        debug_log("Using screen-specific zone: " .. zone.id)
-    elseif #generic_zones > 0 then
-        -- No zones on current screen, using generic zone
-        zone = generic_zones[1]
-        debug_log("Using generic zone: " .. zone.id .. " (this might move the window to another screen)")
-    else
-        debug_log("Zone " .. zone_id .. " not found on any screen")
+    -- If no zones found on current screen, give up (don't move to another screen)
+    if #matching_zones == 0 then
+        debug_log("No matching zones found on current screen. Not moving window.")
         return
     end
+
+    -- Use the first matching zone on the current screen
+    local zone = matching_zones[1]
+    debug_log("Using zone: " .. zone.id .. " on screen: " .. (zone.screen and zone.screen:name() or "unknown"))
 
     -- Get the window's current zone
     local current_zone_id = tiler._window_id2zone_id[win_id]
@@ -563,6 +546,12 @@ function get_mode_for_screen(screen)
         return config
     end
 
+    -- Special case for LG monitor in portrait mode
+    if screen_name:match("LG") and is_portrait then
+        debug_log("Detected LG monitor in portrait mode - using 1x3 layout")
+        return "1x3"
+    end
+
     -- 1. Check for built-in MacBook displays
     if screen_name:match("Built%-in") or screen_name:match("Color LCD") or screen_name:match("internal") or
         screen_name:match("MacBook") then
@@ -584,18 +573,30 @@ function get_mode_for_screen(screen)
         local screen_size = tonumber(size_match)
         debug_log("Extracted screen size from name: " .. screen_size .. " inches")
 
-        if screen_size >= 27 then
-            debug_log("Large monitor (≥ 27\") - using 4x3 layout")
-            return "4x3"
-        elseif screen_size >= 24 then
-            debug_log("Medium monitor (24-26\") - using 3x3 layout")
-            return "3x3"
-        elseif screen_size >= 20 then
-            debug_log("Standard monitor (20-23\") - using 3x2 layout")
-            return "3x2"
+        if is_portrait then
+            -- Portrait mode layouts
+            if screen_size >= 23 then
+                debug_log("Large portrait monitor (≥ 23\") - using 1x3 layout")
+                return "1x3"
+            else
+                debug_log("Small portrait monitor (< 23\") - using 1x2 layout")
+                return "1x2"
+            end
         else
-            debug_log("Small monitor (< 20\") - using 2x2 layout")
-            return "2x2"
+            -- Landscape mode layouts
+            if screen_size >= 27 then
+                debug_log("Large monitor (≥ 27\") - using 4x3 layout")
+                return "4x3"
+            elseif screen_size >= 24 then
+                debug_log("Medium monitor (24-26\") - using 3x3 layout")
+                return "3x3"
+            elseif screen_size >= 20 then
+                debug_log("Standard monitor (20-23\") - using 3x2 layout")
+                return "3x2"
+            else
+                debug_log("Small monitor (< 20\") - using 2x2 layout")
+                return "2x2"
+            end
         end
     end
 
@@ -606,15 +607,15 @@ function get_mode_for_screen(screen)
         return "4x3"
     end
 
-    -- 5. Use resolution-based detection as fallback
+    -- 5. Use resolution and orientation-based detection as fallback
     if is_portrait then
         -- Portrait orientation
         if width >= 1440 or height >= 2560 then
-            debug_log("High-resolution portrait screen - using 3x1 layout")
-            return "3x1"
+            debug_log("High-resolution portrait screen - using 1x3 layout")
+            return "1x3"
         else
-            debug_log("Standard portrait screen - using 2x1 layout")
-            return "2x1"
+            debug_log("Standard portrait screen - using 1x2 layout")
+            return "1x2"
         end
     else
         -- Landscape orientation

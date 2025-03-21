@@ -1,6 +1,7 @@
 -- Hammerspoon configuration, heavily influenced by sdegutis default configuration
 require "pomodoor"
-require "tiler"
+-- This is how you should include the tiler module
+local tiler = require "tiler"
 
 -- Initialize constants
 local GRID_MARGIN_X = 5
@@ -283,6 +284,73 @@ local function init_watcher()
     watcher:subscribe(hs.window.filter.windowFocused, snap_to_grid)
 end
 
+-- Set up screen movement keys without using debug_log
+local function setup_screen_movement_keys()
+    -- Move window to next screen
+    hs.hotkey.bind(tiler.config.modifier, "p", function()
+        local win = hs.window.focusedWindow()
+        if not win then
+            return
+        end
+
+        -- Get all screens
+        local screens = hs.screen.allScreens()
+        if #screens < 2 then
+            return
+        end
+
+        -- Find current screen
+        local current_screen = win:screen()
+        local current_screen_id = current_screen:id()
+
+        -- Find next screen
+        local next_screen = nil
+        for i, screen in ipairs(screens) do
+            if screen:id() == current_screen_id then
+                next_screen = screens[(i % #screens) + 1]
+                break
+            end
+        end
+
+        if next_screen then
+            print("[TilerDebug] Moving window to next screen: " .. next_screen:name())
+            win:moveToScreen(next_screen)
+        end
+    end)
+
+    -- Move window to previous screen
+    hs.hotkey.bind(tiler.config.modifier, ";", function()
+        local win = hs.window.focusedWindow()
+        if not win then
+            return
+        end
+
+        -- Get all screens
+        local screens = hs.screen.allScreens()
+        if #screens < 2 then
+            return
+        end
+
+        -- Find current screen
+        local current_screen = win:screen()
+        local current_screen_id = current_screen:id()
+
+        -- Find previous screen
+        local prev_screen = nil
+        for i, screen in ipairs(screens) do
+            if screen:id() == current_screen_id then
+                prev_screen = screens[((i - 2) % #screens) + 1]
+                break
+            end
+        end
+
+        if prev_screen then
+            print("[TilerDebug] Moving window to previous screen: " .. prev_screen:name())
+            win:moveToScreen(prev_screen)
+        end
+    end)
+end
+
 --[[
   Main initialization function
 ]]
@@ -303,6 +371,8 @@ local function init()
 
     -- Initialize all components
     -- init_wm_binding()
+    setup_screen_movement_keys()
+
     init_app_binding()
     init_custom_binding()
     init_watcher()
