@@ -82,6 +82,7 @@ local tiler = {
         modifier = {"ctrl", "cmd"}, -- Default hotkey modifier
         focus_modifier = {"shift", "ctrl", "cmd"}, -- Default modifier for focus commands
         flash_on_focus = true,
+        smart_placement = true, -- Enable smart placement of new windows
         margins = {
             enabled = true, -- Whether to use margins
             size = 5, -- Default margin size in pixels
@@ -413,6 +414,107 @@ local function is_problem_app(app_name)
     end
 
     return false
+end
+
+local function compute_distance_map(screen, cell_size)
+    local screen_frame = screen:frame()
+    local grid_width = math.ceil(screen_frame.w / cell_size)
+    local grid_height = math.ceil(screen_frame.h / cell_size)
+
+    -- Initialize grid: 0 means empty
+    local grid = {}
+    for i = 1, grid_height do
+        grid[i] = {}
+        for j = 1, grid_width do
+            grid[i][j] = 0
+        end
+    end
+
+    -- Mark cells occupied by existing windows
+    for _, win in pairs(hs.window.allWindows()) do
+        if win:screen() == screen then
+            local frame = win:frame()
+            local x1 = math.floor(frame.x / cell_size) + 1
+            local y1 = math.floor(frame.y / cell_size) + 1
+            local x2 = math.ceil((frame.x + frame.w) / cell_size)
+            local y2 = math.ceil((frame.y + frame.h) / cell_size)
+            for i = math.max(1, y1), math.min(grid_height, y2) do
+                for j = math.max(1, x1), math.min(grid_width, x2) do
+                    grid[i][j] = 1 -- 1 means occupied
+                end
+            end
+        end
+    end
+
+    -- BFS to compute distances
+    local distance = {}
+    for i = 1, grid_height do
+        distance[i] = {}
+        for j = 1, grid_width do
+            distance[i][j] = grid[i][j] == 1 and 0 or -1 -- -1 means unvisited
+        end
+    end
+
+    local queue = {}
+    for i = 1, grid_height do
+        for j = 1, grid_width do
+            if grid[i][j] == 1 then
+                table.insert(queue, {i, j})
+            end
+        end
+    end
+
+    local directions = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
+    while #queue > 0 do
+        local cell = table.remove(queue, 1)
+        local i, j = cell[1], cell[2]
+        for _, dir in pairs(directions) do
+            local ni, nj = i + dir[1], j + dir[2]
+            if ni >= 1 and ni <= grid_height and nj >= 1 and nj <= grid_width and distance[ni][nj] == -1 then
+                distance[ni][nj] = distance[i][j] + 1
+                table.insert(queue, {ni, nj})
+            end
+        end
+    end
+
+    return distance
+end
+
+local function find_best_position(screen, window_width, window_height, cell_size, distance_map)
+    local screen_frame = screen:frame()
+    local grid_width = math.ceil(screen_frame.w / cell_size)
+    local grid_height = math.ceil(screen_frame.h / cell_size)
+    local window_grid_width = math.ceil(window_width / cell_size)
+    local window_grid_height = math.ceil(window_height / cell_size)
+
+    local best_score = -1
+    local best_pos = {
+        x = 0,
+        y = 0
+    }
+
+    for i = 1, grid_height - window_grid_height + 1 do
+        for j = 1, grid_width - window_grid_width + 1 do
+            local min_distance = math.huge
+            for di = 0, window_grid_height - 1 do
+                for dj = 0, window_grid_width - 1 do
+                    local dist = distance_map[i + di][j + dj]
+                    if dist < min_distance then
+                        min_distance = dist
+                    end
+                end
+            end
+            if min_distance > best_score then
+                best_score = min_distance
+                best_pos = {
+                    x = (j - 1) * cell_size,
+                    y = (i - 1) * cell_size
+                }
+            end
+        end
+    end
+
+    return best_pos
 end
 
 -- Add this new function for handling problematic apps
@@ -1717,6 +1819,24 @@ local function init_listeners()
 
     -- Subscribe to window events
     tiler._window_watcher:subscribe(hs.window.filter.windowDestroyed, handle_window_event)
+
+    -- Subscribe to window creation for smart placement
+    tiler._window_watcher:subscribe(hs.window.filter.windowCreated, function(win)
+        if tiler.smart_placement then
+            -- Smart placement logic
+            local screen = win:screen()
+            local cell_size = 50 -- Grid size for placement calculation
+            local distance_map = compute_distance_map(screen, cell_size) -- Function to map occupied areas
+            local frame = win:frame()
+            local pos = find_best_position(screen, frame.w, frame.h, cell_size, distance_map) -- Find least cluttered spot
+            win:setFrame({
+                x = pos.x,
+                y = pos.y,
+                w = frame.w,
+                h = frame.h
+            })
+        end
+    end)
 
     -- Screen change events
     hs.screen.watcher.new(handle_display_change):start()
