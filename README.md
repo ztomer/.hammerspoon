@@ -14,6 +14,7 @@ A modular and powerful window management system for macOS that includes window t
 - **Smart Window Mapping**: Automatically detect and place existing windows in zones
 - **Cross-Screen Navigation**: Move windows and focus between screens with keyboard shortcuts
 - **Modular Architecture**: Easily maintainable with centralized configuration
+- **Centralized Configuration**: All settings in one config.lua file
 
 ## Project Structure
 
@@ -102,7 +103,7 @@ Each key corresponds to a specific zone on the screen grid:
 
 ## Customization
 
-All configuration is centralized in the `config.lua` file:
+All customization is done through the `config.lua` file, which serves as the single source of truth for all settings.
 
 ### Key Combinations
 
@@ -115,9 +116,26 @@ config.keys = {
 }
 ```
 
-### App Shortcuts
+### App Switcher Configuration
 
 ```lua
+config.app_switcher = {
+    -- Apps that need menu-based hiding
+    hide_workaround_apps = {'Arc'},
+
+    -- Apps that require exact mapping between launch name and display name
+    special_app_mappings = {
+        ["bambustudio"] = "bambu studio" -- Launch name → Display name
+    },
+
+    -- Ambiguous app pairs that should not be considered matching
+    ambiguous_apps = {
+        {'notion', 'notion calendar'},
+        {'notion', 'notion mail'}
+    }
+}
+
+-- Application shortcuts
 config.appCuts = {
     q = 'BambuStudio',
     w = 'Whatsapp',
@@ -126,7 +144,7 @@ config.appCuts = {
 }
 ```
 
-### Window Management
+### Window Management Configuration
 
 ```lua
 config.tiler = {
@@ -140,17 +158,34 @@ config.tiler = {
         screen_edge = true
     },
 
-    -- Custom layouts for specific screens
+    -- Screen detection configuration
+    screen_detection = {
+        -- Special screen name patterns and their preferred layouts
+        patterns = {
+            ["DELL.*U32"] = { cols = 4, rows = 3 },  -- Dell 32-inch monitors
+            ["LG.*QHD"] = { cols = 1, rows = 3 },    -- LG QHD in portrait mode
+        },
+
+        -- Size-based layouts (screen diagonal in inches)
+        sizes = {
+            large = { min = 27, layout = "4x3" },      -- 27" and larger - 4x3 grid
+            medium = { min = 24, max = 26.9, layout = "3x3" },  -- 24-26" - 3x3 grid
+            standard = { min = 20, max = 23.9, layout = "3x2" }, -- 20-23" - 3x2 grid
+            small = { max = 19.9, layout = "2x2" }     -- Under 20" - 2x2 grid
+        },
+
+        -- Portrait mode layouts
+        portrait = {
+            large = { min = 23, layout = "1x3" },     -- 23" and larger in portrait - 1x3 grid
+            small = { max = 22.9, layout = "1x2" }    -- Under 23" in portrait - 1x2 grid
+        }
+    },
+
+    -- Custom layouts for specific screens (exact name match)
     layouts = {
         custom = {
-            ["DELL U3223QE"] = {
-                cols = 4,
-                rows = 3
-            },
-            ["LG IPS QHD"] = {
-                cols = 1,
-                rows = 3
-            }
+            ["DELL U3223QE"] = { cols = 4, rows = 3 },
+            ["LG IPS QHD"] = { cols = 1, rows = 3 }
         }
     },
 
@@ -161,12 +196,11 @@ config.tiler = {
         -- More zone configurations...
     },
 
-    -- Portrait mode settings
+    -- Portrait mode zone configurations
     portrait_zones = {
         ["y"] = {"a1", "a1:a2"},
         ["h"] = {"a2", "a1:a3"},
-        ["n"] = {"a3", "a2:a3"},
-        -- More portrait zones...
+        -- Additional settings...
     }
 }
 ```
@@ -184,6 +218,21 @@ config.pomodoro = {
     color_time_remaining = hs.drawing.color.green,
     color_time_used = hs.drawing.color.red
 }
+```
+
+## Screen Detection
+
+The system uses a multi-stage process to detect the appropriate layout for each screen:
+
+1. **Exact Name Match**: Check if the screen name matches a layout in `layouts.custom`
+2. **Pattern Match**: Check if the screen name matches any pattern in `screen_detection.patterns`
+3. **Size Detection**: Extract screen size from name and match against `sizes` or `portrait` settings
+4. **Resolution Fallback**: If other methods fail, determine layout based on resolution
+
+For custom monitor layouts, you can add new entries to the pattern detection:
+
+```lua
+config.tiler.screen_detection.patterns["YOUR_PATTERN"] = { cols = 3, rows = 2 }
 ```
 
 ## Grid Coordinate System
@@ -207,68 +256,23 @@ You can define regions using:
 2. Named positions like `"center"`, `"left-half"`, `"top-half"`, etc.
 3. Table coordinates like `{1,1,2,2}` for programmatic definitions
 
-## Screen-Specific Layouts
-
-The system automatically detects your screen characteristics and applies appropriate layouts:
-
-- **Large Monitors (≥27")**: 4×3 grid (Dell U3223QE, etc.)
-- **Medium Monitors (24-26")**: 3×3 grid
-- **Standard Monitors (20-23")**: 3×2 grid
-- **Small Monitors (<20")**: 2×2 grid
-- **Portrait Monitors**: 1×3 grid for large (≥23") or 1×2 grid for smaller screens
-- **MacBook Built-in Displays**: 2×2 grid
-
 ## Troubleshooting
 
 If windows are not positioning correctly:
 
 1. **Enable Debug Mode**: Set `config.tiler.debug = true` in config.lua
-2. **Force Screen Detection**: Add a custom layout for your specific screen
-3. **Reload Configuration**: Use `Cmd+Ctrl+Shift+R`
-4. **Check Multi-Monitor Setup**: For monitors with negative coordinates, check screen configuration
-5. **Check State Tracking**: If windows don't cycle correctly when rapidly switching between zones, reload Hammerspoon
-
-## Additional Features
-
-### Window Mapping
-
-The tiler automatically maps existing windows to appropriate zones when it starts.
-
-### Focus Control
-
-The focus control feature allows you to quickly switch between windows in a particular zone or across screens:
-
-- Pressing a focus zone shortcut will switch to the topmost window in that zone
-- If the currently focused window is already in that zone, it cycles to the next window
-- When focusing, a brief highlight flash provides visual feedback (can be disabled)
-- Focus is screen-specific: you only focus windows on your current screen
-
-### Debug Helper
-
-Display screen information for troubleshooting:
-
-```lua
--- Helper function to display screen information
-hs.hotkey.bind({"ctrl", "alt", "cmd"}, "I", function()
-    local output = {"Screen Information:"}
-    for i, screen in ipairs(hs.screen.allScreens()) do
-        local frame = screen:frame()
-        local name = screen:name()
-        table.insert(output, string.format("\nScreen %d: %s", i, name))
-        table.insert(output, string.format("Frame: x=%.1f, y=%.1f, w=%.1f, h=%.1f",
-                                         frame.x, frame.y, frame.w, frame.h))
-    end
-    hs.alert.show(table.concat(output, "\n"), 5)
-end)
-```
+2. **Check Screen Detection**: See if your screen is being correctly identified in the Hammerspoon console
+3. **Add Pattern Match**: Add a pattern for your monitor to `screen_detection.patterns`
+4. **Reload Configuration**: Use `Cmd+Ctrl+Shift+R`
+5. **Check Console**: Examine the Hammerspoon console for error messages
 
 ## Planning
 
 - [x] Focus on Zone keyboard shortcut (Switch to the topmost window in a zone and cycle through them)
 - [x] Cross-screen focus navigation (Move focus between screens with keyboard shortcuts)
 - [x] Smart window mapping (Automatically detect and map existing windows to appropriate zones)
-- [X] Window stacking within zones (keep multiple windows in a single zone and cycle through them)
 - [x] Modular architecture (Split functionality into separate modules with central configuration)
+- [x] Centralized configuration (All settings in one config.lua file)
 - [ ] Application-aware layouts (Save preferred zones for specific applications)
 - [ ] Automatically arrange windows based on predefined layouts
 - [ ] Dynamic row and column resizing
@@ -276,6 +280,7 @@ end)
 - [ ] Automatic window resizing based on content
 - [ ] Save and load window layouts
 - [ ] Support for Mac spaces
+- [ ] Window stacking within zones (keep multiple windows in a single zone and cycle through them)
 - [ ] Grid visualization overlay (display the grid layout temporarily when positioning windows)
 - [ ] Mouse-based zone selection (Shift+drag to select a custom zone)
 - [ ] Zone presets (quickly switch between different zone layouts)
