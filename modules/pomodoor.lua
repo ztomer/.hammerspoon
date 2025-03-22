@@ -1,25 +1,23 @@
 --- Pomodoro module
 --------------------------------------------------------------------------------
--- Configuration variables
---------------------------------------------------------------------------------
+local config = require "config"
+
 local pom = {}
 pom.bar = {
-    indicator_height = 0.2, -- ratio from the height of the menubar (0..1)
-    indicator_alpha = 0.3,
-    indicator_in_all_spaces = true,
-    color_time_remaining = hs.drawing.color.green,
-    color_time_used = hs.drawing.color.red,
+    indicator_height = config.pomodoro.indicator_height,
+    indicator_alpha = config.pomodoro.indicator_alpha,
+    indicator_in_all_spaces = config.pomodoro.indicator_in_all_spaces,
+    color_time_remaining = config.pomodoro.color_time_remaining,
+    color_time_used = config.pomodoro.color_time_used,
 
     c_left = hs.drawing.rectangle(hs.geometry.rect(0, 0, 0, 0)),
     c_used = hs.drawing.rectangle(hs.geometry.rect(0, 0, 0, 0))
 }
 
 pom.config = {
-    enable_color_bar = true,
-    -- Using random productivity blog numbers, because why not
-    work_period_sec = 52 * 60,
-    rest_period_sec = 17 * 60
-
+    enable_color_bar = config.pomodoro.enable_color_bar,
+    work_period_sec = config.pomodoro.work_period_sec,
+    rest_period_sec = config.pomodoro.rest_period_sec
 }
 
 pom.var = {
@@ -87,8 +85,7 @@ end
 -- * Disabling once will pause the countdown
 -- * Disabling twice will reset the countdown
 -- * Disabling trice will shut down and hide the pomodoro timer
-function pom_disable()
-
+function pom.disable()
     local pom_was_active = pom.var.is_active
     pom.var.is_active = false
 
@@ -114,7 +111,6 @@ function pom_disable()
     end
 
     pom.var.disable_count = pom.var.disable_count + 1
-
 end
 
 -- update pomodoro timer
@@ -125,7 +121,7 @@ local function pom_update_time()
         pom.var.time_left = pom.var.time_left - 1
 
         if (pom.var.time_left <= 0) then
-            pom_disable()
+            pom.disable()
             if pom.var.curr_active_type == "work" then
                 hs.alert.show("Work Complete!", 2)
                 pom.var.work_count = pom.var.work_count + 1
@@ -144,7 +140,6 @@ local function pom_update_time()
         if (pom.config.enable_color_bar == true) then
             pom_draw_indicator(pom.var.time_left, pom.var.max_time_sec)
         end
-
     end
 end
 
@@ -163,7 +158,7 @@ local function pom_create_menu(pom_origin)
 end
 
 -- start the pomodoro timer
-function pom_enable()
+function pom.enable()
     pom.var.disable_count = 0;
     if (pom.var.is_active) then
         return
@@ -177,16 +172,9 @@ function pom_enable()
 end
 
 -- reset work count
--- TODO - reset automatically every day
-function pom_reset_work()
+function pom.reset_work()
     pom.var.work_count = 0;
 end
--- Use examples:
 
--- init pomodoro -- show menu immediately
--- pom_create_menu()
--- pom_update_menu()
-
--- show menu only on first pom_enable
--- hs.hotkey.bind(mash, '9', function() pom_enable() end)
--- hs.hotkey.bind(mash, '0', function() pom_disable() end)
+-- Return the module
+return pom
