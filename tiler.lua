@@ -522,11 +522,11 @@ function apply_frame_to_problem_app(window, frame, app_name)
     debug_log("Using special handling for app:", app_name)
 
     -- Strategy 1: Multiple attempts with delays
-    local max_attempts = 3
+    local max_attempts = 10
 
     -- First attempt with animation
     local saved_duration = hs.window.animationDuration
-    hs.window.animationDuration = 0.1
+    hs.window.animationDuration = 0.01
     window:setFrame(frame)
     hs.window.animationDuration = saved_duration
 
