@@ -86,6 +86,9 @@ local tiler = {
             enabled = true, -- Whether to use margins
             size = 5, -- Default margin size in pixels
             screen_edge = true -- Whether to apply margins to screen edges
+        },
+        problem_apps = { -- List of apps that need special window positioning handling
+        "Firefox", "Zen" -- Add other problematic apps here
         }
     },
 
@@ -395,7 +398,68 @@ function Zone:remove_window(window_id)
 
 end
 
--- Resize a window based on its current tile configuration
+-- Utility function to check if an app is in the problem list
+-- Add this in the utility functions section
+local function is_problem_app(app_name)
+    if not tiler.config.problem_apps then
+        return false
+    end
+
+    local lower_app_name = app_name:lower()
+    for _, name in ipairs(tiler.config.problem_apps) do
+        if name:lower() == lower_app_name then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Add this new function for handling problematic apps
+function apply_frame_to_problem_app(window, frame, app_name)
+    debug_log("Using special handling for app:", app_name)
+
+    -- Strategy 1: Multiple attempts with delays
+    local max_attempts = 3
+
+    -- First attempt with animation
+    local saved_duration = hs.window.animationDuration
+    hs.window.animationDuration = 0.1
+    window:setFrame(frame)
+    hs.window.animationDuration = saved_duration
+
+    -- Additional attempts if needed
+    for attempt = 2, max_attempts do
+        hs.timer.doAfter((attempt - 1) * 0.1, function()
+            -- Check if the window moved from where we put it
+            local current_frame = window:frame()
+            if current_frame.x ~= frame.x or current_frame.y ~= frame.y or current_frame.w ~= frame.w or current_frame.h ~=
+                frame.h then
+                debug_log("Detected position change, forcing position (attempt " .. attempt .. ")")
+                window:setFrame(frame)
+            end
+        end)
+    end
+
+    -- Final verification with a longer delay
+    hs.timer.doAfter(0.5, function()
+        local final_frame = window:frame()
+        if final_frame.x ~= frame.x or final_frame.y ~= frame.y or final_frame.w ~= frame.w or final_frame.h ~= frame.h then
+            debug_log("Final position check failed, forcing position one last time")
+            window:setFrame(frame)
+
+            -- Log the final position for debugging
+            hs.timer.doAfter(0.1, function()
+                local result_frame = window:frame()
+                debug_log(
+                    "Final position: x=" .. result_frame.x .. ", y=" .. result_frame.y .. ", w=" .. result_frame.w ..
+                        ", h=" .. result_frame.h)
+            end)
+        end
+    end)
+end
+
+-- Replace the existing Zone:resize_window function with this one
 function Zone:resize_window(window_id)
     local tile_idx = self.window_to_tile_idx[window_id]
     if not tile_idx then
@@ -423,11 +487,23 @@ function Zone:resize_window(window_id)
         debug_log("Zone has no screen assigned, using window's current screen:", target_screen:name())
     end
 
+    -- Get the application name for special handling check
+    local app_name = window:application():name()
+    local needs_special_handling = is_problem_app(app_name)
+
     -- Apply the tile dimensions to the window on the correct screen
     -- For portrait monitor with negative coordinates, explicitly move to screen first
     local screen_name = target_screen:name()
     local is_portrait = target_screen:frame().h > target_screen:frame().w
     local has_negative_coords = target_screen:frame().x < 0 or target_screen:frame().y < 0
+
+    -- Create the frame that will be applied
+    local frame = {
+        x = tile.x,
+        y = tile.y,
+        w = tile.width,
+        h = tile.height
+    }
 
     if is_portrait and has_negative_coords then
         -- Special handling for portrait monitors with negative coordinates
@@ -438,28 +514,28 @@ function Zone:resize_window(window_id)
 
         -- Then set the position - use a very short delay to ensure the window has time to move
         hs.timer.doAfter(0.05, function()
-            local frame = {
-                x = tile.x,
-                y = tile.y,
-                w = tile.width,
-                h = tile.height
-            }
-
             debug_log("Setting frame with delay for window", window_id, "to", tile:to_string(), "on screen",
                 target_screen:name())
-            window:setFrame(frame)
+
+            if needs_special_handling then
+                -- Special handling for problem apps
+                apply_frame_to_problem_app(window, frame, app_name)
+            else
+                -- Normal handling
+                window:setFrame(frame)
+            end
         end)
     else
         -- Normal case - set frame directly
-        local frame = {
-            x = tile.x,
-            y = tile.y,
-            w = tile.width,
-            h = tile.height
-        }
-
         debug_log("Setting frame for window", window_id, "to", tile:to_string(), "on screen", target_screen:name())
-        window:setFrame(frame)
+
+        if needs_special_handling then
+            -- Special handling for problem apps
+            apply_frame_to_problem_app(window, frame, app_name)
+        else
+            -- Normal handling
+            window:setFrame(frame)
+        end
     end
 
     return true
