@@ -691,27 +691,6 @@ tiler._position_group_idx = {} -- Tracks which position group was last focused
 -- Core Functions
 --------------------------
 
--- Utility function to find the correct zone for a window
-local function find_zone_for_window(window_id)
-    -- Check the official mapping first
-    local zone_id = tiler._window_id2zone_id[window_id]
-    if zone_id and tiler._zone_id2zone[zone_id] then
-        return tiler._zone_id2zone[zone_id]
-    end
-
-    -- If not found, check all zones for this window
-    for id, zone in pairs(tiler._zone_id2zone) do
-        if zone.window_to_tile_idx and zone.window_to_tile_idx[window_id] ~= nil then
-            -- Found window in a zone, update the official mapping
-            tiler._window_id2zone_id[window_id] = id
-            debug_log("Found window", window_id, "in zone", id, "- fixing state tracking")
-            return zone
-        end
-    end
-
-    return nil
-end
-
 -- Calculate tile position from grid coordinates
 local function calculate_tile_position(screen, col_start, row_start, col_end, row_end, rows, cols)
     local frame = screen:frame()
@@ -1387,26 +1366,15 @@ function get_mode_for_screen(screen)
         return config
     end
 
-    -- Special case for LG monitor in portrait mode
-    if screen_name:match("LG") and is_portrait then
-        debug_log("Detected LG monitor in portrait mode - using 1x3 layout")
-        return "1x3"
+    -- Check for pattern matches in screen name
+    for pattern, layout in pairs(config.tiler.screen_detection.patterns) do
+        if screen_name:match(pattern) then
+            debug_log("Matched screen pattern: " .. pattern .. " - using layout", layout.cols .. "x" .. layout.rows)
+            return layout
+        end
     end
 
-    -- 1. Check for built-in MacBook displays
-    if screen_name:match("Built%-in") or screen_name:match("Color LCD") or screen_name:match("internal") or
-        screen_name:match("MacBook") then
-        debug_log("Detected MacBook built-in display - using 2x2 layout")
-        return "2x2"
-    end
-
-    -- 2. Check for Dell 32-inch monitor specifically
-    if screen_name:match("DELL") and (screen_name:match("U3223") or screen_name:match("32")) then
-        debug_log("Detected Dell 32-inch monitor - using 4x3 layout")
-        return "4x3"
-    end
-
-    -- 3. Try to extract screen size from name
+    -- Try to extract screen size from name
     local size_pattern = "(%d+)[%s%-]?inch"
     local size_match = screen_name:match(size_pattern)
 
@@ -1416,39 +1384,30 @@ function get_mode_for_screen(screen)
 
         if is_portrait then
             -- Portrait mode layouts
-            if screen_size >= 23 then
-                debug_log("Large portrait monitor (≥ 23\") - using 1x3 layout")
-                return "1x3"
-            else
-                debug_log("Small portrait monitor (< 23\") - using 1x2 layout")
-                return "1x2"
+            for _, size_config in pairs(config.tiler.screen_detection.portrait) do
+                if (size_config.min and screen_size >= size_config.min) or
+                    (size_config.max and screen_size <= size_config.max) or
+                    (size_config.min and size_config.max and screen_size >= size_config.min and screen_size <=
+                        size_config.max) then
+                    debug_log("Using portrait layout: " .. size_config.layout)
+                    return size_config.layout
+                end
             end
         else
             -- Landscape mode layouts
-            if screen_size >= 27 then
-                debug_log("Large monitor (≥ 27\") - using 4x3 layout")
-                return "4x3"
-            elseif screen_size >= 24 then
-                debug_log("Medium monitor (24-26\") - using 3x3 layout")
-                return "3x3"
-            elseif screen_size >= 20 then
-                debug_log("Standard monitor (20-23\") - using 3x2 layout")
-                return "3x2"
-            else
-                debug_log("Small monitor (< 20\") - using 2x2 layout")
-                return "2x2"
+            for _, size_config in pairs(config.tiler.screen_detection.sizes) do
+                if (size_config.min and screen_size >= size_config.min) or
+                    (size_config.max and screen_size <= size_config.max) or
+                    (size_config.min and size_config.max and screen_size >= size_config.min and screen_size <=
+                        size_config.max) then
+                    debug_log("Using landscape layout: " .. size_config.layout)
+                    return size_config.layout
+                end
             end
         end
     end
 
-    -- 4. Check for common monitor families
-    if screen_name:match("LG UltraFine") or screen_name:match("Pro Display XDR") or screen_name:match("U27") or
-        screen_name:match("U32") then
-        debug_log("Detected high-end monitor - using 4x3 layout")
-        return "4x3"
-    end
-
-    -- 5. Use resolution and orientation-based detection as fallback
+    -- Fallback to resolution-based detection
     if is_portrait then
         -- Portrait orientation
         if width >= 1440 or height >= 2560 then

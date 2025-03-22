@@ -9,6 +9,20 @@ config.keys = {
     HYPER = {"shift", "ctrl", "alt", "cmd"}
 }
 
+-- Application switcher settings
+config.app_switcher = {
+    -- Apps that need menu-based hiding
+    hide_workaround_apps = {'Arc'},
+
+    -- Apps that require exact mapping between launch name and display name
+    special_app_mappings = {
+        ["bambustudio"] = "bambu studio" -- Launch name → Display name
+    },
+
+    -- Ambiguous app pairs that should not be considered matching
+    ambiguous_apps = {{'notion', 'notion calendar'}, {'notion', 'notion mail'}}
+}
+
 -- Application shortcuts with direct lowercase mapping
 config.appCuts = {
     q = 'BambuStudio',
@@ -65,6 +79,71 @@ config.tiler = {
 
     -- List of apps that need special window positioning handling
     problem_apps = {"Firefox", "Zen" -- Add other problematic apps here
+    },
+
+    -- Screen detection configuration
+    screen_detection = {
+        -- Special screen name patterns and their preferred layouts
+        patterns = {
+            ["DELL.*U32"] = {
+                cols = 4,
+                rows = 3
+            }, -- Dell 32-inch monitors
+            ["LG.*QHD"] = {
+                cols = 1,
+                rows = 3
+            }, -- LG QHD in portrait mode
+            ["Built[-]?in"] = {
+                cols = 2,
+                rows = 2
+            }, -- MacBook built-in displays
+            ["Color LCD"] = {
+                cols = 2,
+                rows = 2
+            }, -- MacBook displays
+            ["internal"] = {
+                cols = 2,
+                rows = 2
+            }, -- Internal displays
+            ["MacBook"] = {
+                cols = 2,
+                rows = 2
+            } -- MacBook displays
+        },
+
+        -- Size-based layouts (screen diagonal in inches)
+        sizes = {
+            large = {
+                min = 27,
+                layout = "4x3"
+            }, -- 27" and larger - 4x3 grid
+            medium = {
+                min = 24,
+                max = 26.9,
+                layout = "3x3"
+            }, -- 24-26" - 3x3 grid
+            standard = {
+                min = 20,
+                max = 23.9,
+                layout = "3x2"
+            }, -- 20-23" - 3x2 grid
+            small = {
+                max = 19.9,
+                layout = "2x2"
+            } -- Under 20" - 2x2 grid
+        },
+
+        -- Portrait mode layouts
+        portrait = {
+            large = {
+                min = 23,
+                layout = "1x3"
+            }, -- 23" and larger in portrait - 1x3 grid
+            small = {
+                max = 22.9,
+                layout = "1x2"
+            } -- Under 23" in portrait - 1x2 grid
+        }
     },
 
     -- Custom layouts for specific screens

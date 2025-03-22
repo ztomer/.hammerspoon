@@ -1,19 +1,14 @@
 -- App switching module for Hammerspoon
+local config = require "config"
 local appSwitcher = {}
 
 -- Cache frequently accessed functions
 local appLaunchOrFocus = hs.application.launchOrFocus
 
--- Pre-compile application lists for faster lookups
-local hide_workaround_apps = {'Arc'} -- Apps that need menu-based hiding
-
--- Apps that require exact mapping between launch name and display name
-local special_app_mappings = {
-    ["bambustudio"] = "bambu studio" -- Launch name → Display name
-}
-
--- Ambiguous app pairs that should not be considered matching
-local ambiguous_apps = {{'notion', 'notion calendar'}, {'notion', 'notion mail'}}
+-- Get app switcher settings from config
+local hide_workaround_apps = config.app_switcher.hide_workaround_apps
+local special_app_mappings = config.app_switcher.special_app_mappings
+local ambiguous_apps = config.app_switcher.ambiguous_apps
 
 --[[
   Determines if two app names are ambiguous (one might be part of another)
