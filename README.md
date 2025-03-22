@@ -1,37 +1,41 @@
-# Zone Tiler for Hammerspoon
+# Hammerspoon Window Management System
 
-A powerful window management system that allows defining zones on the screen and cycling window sizes within those zones.
+A modular and powerful window management system for macOS that includes window tiling, application switching, and productivity tools.
 
 ## Features
 
 - **Grid-based Window Management**: Organize windows in a customizable grid layout
-- **Screen-aware Layouts**: Automatically detects screen size and orientation to provide optimal layouts
+- **Screen-aware Layouts**: Automatically detects screen size and orientation for optimal layouts
 - **Multiple Screen Support**: Seamlessly manage windows across multiple displays
-- **Intuitive Keyboard Shortcuts**: Quickly position and resize windows with keyboard shortcuts
-- **Customizable Configurations**: Easily tailor layouts to your specific needs
-- **Cycle Through Positions**: Quickly cycle a window through different preset sizes
-- **Window Margins**: Add configurable spacing between windows and screen edges
-- **Window Focus Control**: Quickly focus and cycle through windows in specific zones
-- **Smart Window Mapping**: Automatically detect and map existing windows to appropriate zones
-- **Cross-Screen Focus Navigation**: Move focus between screens with keyboard shortcuts
-- **Negative Coordinate Support**: Properly handle multi-monitor setups with negative screen coordinates
-- **Robust State Tracking**: Maintain window positions even when rapidly switching between zones
+- **Application Switching**: Quick keyboard shortcuts for launching and toggling applications
+- **Pomodoro Timer**: Built-in productivity timer with visual feedback
+- **Window Margins**: Configurable spacing between windows and screen edges
+- **Focus Control**: Quickly focus and cycle through windows in specific zones
+- **Smart Window Mapping**: Automatically detect and place existing windows in zones
+- **Cross-Screen Navigation**: Move windows and focus between screens with keyboard shortcuts
+- **Modular Architecture**: Easily maintainable with centralized configuration
+
+## Project Structure
+
+```
+~/.hammerspoon/
+├── init.lua              # Main initialization file
+├── config.lua            # Central configuration
+└── modules/
+    ├── pomodoor.lua      # Pomodoro timer module
+    ├── tiler.lua         # Window management module
+    └── app_switcher.lua  # Application switching module
+```
 
 ## Installation
 
-1. Install [Hammerspoon](https://www.hammerspoon.org/) if you haven't already
-2. Download the `tiler.lua` file to your Hammerspoon configuration directory (`~/.hammerspoon/`)
-3. Add the following to your `init.lua` file:
-
-```lua
-require "tiler"
-```
+1. Install [Hammerspoon](https://www.hammerspoon.org/)
+2. Clone this repository to `~/.hammerspoon/`
+3. Restart Hammerspoon
 
 ## Default Keyboard Shortcuts
 
-All default shortcuts use the modifier combination `Ctrl+Cmd` (can be customized).
-
-### Basic Window Positioning
+### Window Management (Ctrl+Cmd)
 
 The keyboard layout maps directly to screen positions:
 
@@ -73,39 +77,59 @@ Each key corresponds to a specific zone on the screen grid:
 - `Shift+Ctrl+Cmd+p`: Move focus to next screen
 - `Shift+Ctrl+Cmd+;`: Move focus to previous screen
 
-## Screen-Specific Layouts
+### App Switching (Shift+Ctrl)
+- `Shift+Ctrl+[key]`: Launch or toggle application based on key bindings in config.lua
+- `Shift+Ctrl+/`: Display help with keyboard shortcuts
 
-The tiler automatically detects your screen characteristics and applies the most appropriate layout:
+### Pomodoro Timer
+- `Ctrl+Cmd+9`: Start pomodoro timer
+- `Ctrl+Cmd+0`: Pause/reset pomodoro timer
+- `Shift+Ctrl+Cmd+0`: Reset work count
 
-- **Large Monitors (≥27")**: 4×3 grid (Dell U3223QE, etc.)
-- **Medium Monitors (24-26")**: 3×3 grid
-- **Standard Monitors (20-23")**: 3×2 grid
-- **Small Monitors (<20")**: 2×2 grid
-- **Portrait Monitors**: 1×3 grid for large (≥23") or 1×2 grid for smaller screens
-- **MacBook Built-in Displays**: 2×2 grid
+### Utility Functions
+- `Hyper+- (minus)`: Display window hints
+- `Hyper+= (equals)`: Launch Activity Monitor
+- `Shift+Ctrl+Cmd+R`: Reload configuration
 
 ## Customization
 
-### Basic Configuration
+All configuration is centralized in the `config.lua` file:
 
-Here's a complete configuration example for your `init.lua`:
+### Key Combinations
 
 ```lua
--- Define configuration for the tiler
-local tiler_config = {
-    debug = true,                  -- Enable debug logging
-    modifier = {"ctrl", "cmd"},    -- Set default modifier keys
-    focus_modifier = {"shift", "ctrl", "cmd"}, -- Modifier keys for focus commands
+config.keys = {
+    mash = {"ctrl", "cmd"},
+    mash_app = {"shift", "ctrl"},
+    mash_shift = {"shift", "ctrl", "cmd"},
+    HYPER = {"shift", "ctrl", "alt", "cmd"}
+}
+```
+
+### App Shortcuts
+
+```lua
+config.appCuts = {
+    q = 'BambuStudio',
+    w = 'Whatsapp',
+    e = 'Finder',
+    -- Add more apps here
+}
+```
+
+### Window Management
+
+```lua
+config.tiler = {
+    debug = true,
+    modifier = {"ctrl", "cmd"},
 
     -- Window margin settings
     margins = {
-        enabled = true,            -- Enable margins between windows
-        size = 8,                  -- Use 8 pixels for margins
-        screen_edge = true         -- Apply margins to screen edges too
+        enabled = true,
+        size = 5,
+        screen_edge = true
     },
-
-    -- Focus settings
-    flash_on_focus = true,         -- Visual flash when focusing windows
 
     -- Custom layouts for specific screens
     layouts = {
@@ -121,78 +145,35 @@ local tiler_config = {
         }
     },
 
-    -- Screen-specific zone configurations
-    zone_configs_by_screen = {
-        ["LG IPS QHD"] = {
-            -- Top section
-            ["y"] = {"a1", "a1:a2"},
+    -- Default zone configurations
+    default_zone_configs = {
+        ["y"] = {"a1:a2", "a1", "a1:b2"},
+        ["h"] = {"a1:b3", "a1:a3", "a1:c3", "a2"},
+        -- More zone configurations...
+    },
 
-            -- Middle section
-            ["h"] = {"a2", "a1:a3"},
-
-            -- Bottom section
-            ["n"] = {"a3", "a2:a3"},
-
-            -- Center key
-            ["0"] = {"a1:a3", "a2", "a1"}
-        }
+    -- Portrait mode settings
+    portrait_zones = {
+        ["y"] = {"a1", "a1:a2"},
+        ["h"] = {"a2", "a1:a3"},
+        ["n"] = {"a3", "a2:a3"},
+        -- More portrait zones...
     }
 }
-
--- Start tiler with the configuration
-tiler.start(tiler_config)
 ```
 
-### Custom Screen Layouts
-
-You can define custom layouts for specific screens:
+### Pomodoro Settings
 
 ```lua
--- Define a custom layout for your monitor
-tiler.layouts.custom["DELL U3223QE"] = { cols = 4, rows = 3 }
-```
-
-### Change Default Modifier Keys
-
-```lua
--- Change the default modifier keys
-tiler.config.modifier = {"ctrl", "alt"}
-tiler.config.focus_modifier = {"shift", "ctrl", "alt"}
-```
-
-### Configure Window Margins
-
-```lua
--- Configure window margins
-tiler.config.margins = {
-    enabled = true,     -- Turn margins on/off
-    size = 10,          -- Margin size in pixels
-    screen_edge = false -- Don't apply margins to screen edges
-}
-```
-
-### Custom Zone Configurations
-
-```lua
--- Customize the behavior of a specific key
-tiler.configure_zone("y", { "a1:a2", "a1", "a1:a3" })
-```
-
-### Screen-Specific Zone Configurations
-
-For different behaviors on different monitors:
-
-```lua
--- Define custom zones for a portrait monitor
-local portrait_zones = {
-    ["y"] = {"a1", "a1:a2"},  -- Top section
-    ["h"] = {"a2", "a1:a3"},  -- Middle section
-    ["n"] = {"a3", "a2:a3"}   -- Bottom section
-}
-
--- Apply to specific screen
-tiler.zone_configs_by_screen = {
-    ["LG IPS QHD"] = portrait_zones
+config.pomodoro = {
+    enable_color_bar = true,
+    work_period_sec = 52 * 60,  -- 52 minutes
+    rest_period_sec = 17 * 60,  -- 17 minutes
+    indicator_height = 0.2,
+    indicator_alpha = 0.3,
+    indicator_in_all_spaces = true,
+    color_time_remaining = hs.drawing.color.green,
+    color_time_used = hs.drawing.color.red
 }
 ```
 
@@ -217,144 +198,67 @@ You can define regions using:
 2. Named positions like `"center"`, `"left-half"`, `"top-half"`, etc.
 3. Table coordinates like `{1,1,2,2}` for programmatic definitions
 
-## Additional Features
+## Screen-Specific Layouts
 
-### Window Mapping
+The system automatically detects your screen characteristics and applies appropriate layouts:
 
-The tiler automatically attempts to map existing windows to appropriate zones when it starts. You can also trigger this manually:
-
-```lua
--- Manually map all existing windows to zones
-hs.hotkey.bind({"ctrl", "cmd", "shift"}, "M", function()
-    local count = tiler.map_existing_windows()
-    hs.alert.show("Mapped " .. count .. " windows to zones")
-end)
-```
-
-### Focus Control
-
-The focus control feature allows you to quickly switch between windows in a particular zone or across screens:
-
-- `Shift+Ctrl+Cmd+[zone key]` focuses on windows in that zone and cycles through them
-- `Shift+Ctrl+Cmd+p` moves focus to the next screen
-- `Shift+Ctrl+Cmd+;` moves focus to the previous screen
-
-This makes it easy to navigate between applications without using the mouse, particularly in complex multi-screen setups.
+- **Large Monitors (≥27")**: 4×3 grid (Dell U3223QE, etc.)
+- **Medium Monitors (24-26")**: 3×3 grid
+- **Standard Monitors (20-23")**: 3×2 grid
+- **Small Monitors (<20")**: 2×2 grid
+- **Portrait Monitors**: 1×3 grid for large (≥23") or 1×2 grid for smaller screens
+- **MacBook Built-in Displays**: 2×2 grid
 
 ## Troubleshooting
 
 If windows are not positioning correctly:
 
-1. **Enable Debug Mode**: Add `tiler.config.debug = true` to your `init.lua`
+1. **Enable Debug Mode**: Set `config.tiler.debug = true` in config.lua
 2. **Force Screen Detection**: Add a custom layout for your specific screen
-3. **Reload Configuration**: Use `Cmd+Ctrl+Shift+R` if you've added the hot reload shortcut
-4. **Check Multi-Monitor Setup**: For monitors with negative coordinates, ensure you're using the latest version with negative coordinate support
-5. **Check State Tracking**: If windows don't cycle correctly when rapidly switching between zones, ensure you have the latest state tracking fixes
+3. **Reload Configuration**: Use `Cmd+Ctrl+Shift+R`
+4. **Check Multi-Monitor Setup**: For monitors with negative coordinates, check screen configuration
+5. **Check State Tracking**: If windows don't cycle correctly when rapidly switching between zones, reload Hammerspoon
 
-## Advanced Usage
+## Additional Features
 
-### Hot Reload Configuration
+### Window Mapping
 
-Add this to your `init.lua` for quick reloading during customization:
+The tiler automatically maps existing windows to appropriate zones when it starts.
 
-```lua
-hs.hotkey.bind({"ctrl", "cmd", "shift"}, "R", function()
-    hs.reload()
-    hs.alert.show("Config reloaded!")
-end)
-```
+### Focus Control
 
-### Creating Custom Grid Layouts
-
-For highly customized layouts, you can define your own grid system:
-
-```lua
-tiler.layouts.custom["My Special Monitor"] = {
-    cols = 6,      -- 6 columns
-    rows = 4,      -- 4 rows
-    modifier = {"ctrl", "alt"}  -- Custom modifier keys
-}
-```
-
-### Debug Helper Functions
-
-For troubleshooting multi-monitor setups:
-
-```lua
--- Helper function to display screen information
-hs.hotkey.bind({"ctrl", "alt", "cmd"}, "I", function()
-    local output = {"Screen Information:"}
-
-    for i, screen in ipairs(hs.screen.allScreens()) do
-        local frame = screen:frame()
-        local name = screen:name()
-
-        table.insert(output, string.format("\nScreen %d: %s", i, name))
-        table.insert(output, string.format("Frame: x=%.1f, y=%.1f, w=%.1f, h=%.1f",
-                                         frame.x, frame.y, frame.w, frame.h))
-    end
-
-    hs.alert.show(table.concat(output, "\n"), 5)
-end)
-```
-
-## Focus Zone Feature
-
-The Focus Zone feature allows you to quickly switch between windows in a particular zone using keyboard shortcuts.
-
-### Focus Zone Keyboard Shortcuts
-
-By default, focusing on zone windows uses the `Shift+Ctrl+Cmd` modifier combined with the zone key:
-
-- `Shift+Ctrl+Cmd+y`: Focus on windows in the top-left zone
-- `Shift+Ctrl+Cmd+h`: Focus on windows in the left zone
-- `Shift+Ctrl+Cmd+n`: Focus on windows in the bottom-left zone
-- ... and so on for all zone keys
-
-### Behavior
+The focus control feature allows you to quickly switch between windows in a particular zone or across screens:
 
 - Pressing a focus zone shortcut will switch to the topmost window in that zone
 - If the currently focused window is already in that zone, it cycles to the next window
 - When focusing, a brief highlight flash provides visual feedback (can be disabled)
 - Focus is screen-specific: you only focus windows on your current screen
 
-### Screen Focus Movement
+### Debug Helper
 
-The Screen Focus movement feature allows you to quickly move focus between screens:
-
-- `Shift+Ctrl+Cmd+p`: Move focus to the next screen
-- `Shift+Ctrl+Cmd+;`: Move focus to the previous screen
-
-This complements the existing window movement functionality and makes it easy to work with multi-monitor setups.
-
-### Configuration
-
-You can customize the focus zone feature in your configuration:
+Display screen information for troubleshooting:
 
 ```lua
-local tiler_config = {
-    -- Other settings...
-
-    -- Focus zone settings
-    focus_modifier = {"shift", "ctrl", "cmd"}, -- Modifier keys for focusing
-    flash_on_focus = true,                     -- Flash window when focused
-}
+-- Helper function to display screen information
+hs.hotkey.bind({"ctrl", "alt", "cmd"}, "I", function()
+    local output = {"Screen Information:"}
+    for i, screen in ipairs(hs.screen.allScreens()) do
+        local frame = screen:frame()
+        local name = screen:name()
+        table.insert(output, string.format("\nScreen %d: %s", i, name))
+        table.insert(output, string.format("Frame: x=%.1f, y=%.1f, w=%.1f, h=%.1f",
+                                         frame.x, frame.y, frame.w, frame.h))
+    end
+    hs.alert.show(table.concat(output, "\n"), 5)
+end)
 ```
-
-### Use Cases
-
-The focus zone feature is particularly useful for:
-
-- Quickly switching between related windows (e.g., between editor and terminal in a coding zone)
-- Managing many windows arranged in specific zones
-- Creating a workflow that combines window positioning and focus management
-- Navigating across multiple monitors without using the mouse
 
 ## Planning
 
 - [x] Focus on Zone keyboard shortcut (Switch to the topmost window in a zone and cycle through them)
 - [x] Cross-screen focus navigation (Move focus between screens with keyboard shortcuts)
 - [x] Smart window mapping (Automatically detect and map existing windows to appropriate zones)
+- [x] Modular architecture (Split functionality into separate modules with central configuration)
 - [ ] Application-aware layouts (Save preferred zones for specific applications)
 - [ ] Automatically arrange windows based on predefined layouts
 - [ ] Dynamic row and column resizing
@@ -369,4 +273,6 @@ The focus zone feature is particularly useful for:
 
 ## Credits
 
-Zone Tiler was created for use with [Hammerspoon](https://www.hammerspoon.org/)
+- Built with [Hammerspoon](https://www.hammerspoon.org/)
+- Window Tiler inspired by grid layout systems
+- Pomodoro timer based on the Pomodoro Technique®

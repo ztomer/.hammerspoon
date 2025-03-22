@@ -75,76 +75,33 @@ Center:
 
 Many more keys are bound automatically based on your grid size.
 ]] -- Define the tiler namespace
+local config = require "config" -- Configuration file
+
+-- Define the tiler namespace
 local tiler = {
-    -- Settings that can be modified by the user
-    config = {
-        debug = true, -- Enable debug logging
-        modifier = {"ctrl", "cmd"}, -- Default hotkey modifier
-        focus_modifier = {"shift", "ctrl", "cmd"}, -- Default modifier for focus commands
-        flash_on_focus = true,
-        smart_placement = true, -- Enable smart placement of new windows
-        margins = {
-            enabled = true, -- Whether to use margins
-            size = 5, -- Default margin size in pixels
-            screen_edge = true -- Whether to apply margins to screen edges
-        },
-        problem_apps = { -- List of apps that need special window positioning handling
-        "Firefox", "Zen" -- Add other problematic apps here
-        }
-    },
+    -- Settings placeholder (will be populated from config)
+    config = {},
 
     -- Internal state
     _version = "1.1.0",
-    _window_id2zone_id = {}, -- Maps window ids to zone ids
-    _zone_id2zone = {}, -- Maps zone ids to zone objects
-    _modes = {}, -- Screen layout modes
-    _window_watcher = nil, -- Window event watcher
+    _window_id2zone_id = {},
+    _zone_id2zone = {},
+    _modes = {},
+    _window_watcher = nil,
 
     -- Public user configuration tables
     layouts = {
-        -- Default layouts for different screen types
         default = {
             small = "2x2",
             medium = "3x2",
             large = "3x3",
             extra_large = "4x3"
         },
-
-        -- Custom layouts for specific screens (by name)
-        custom = {
-            -- Example: ["DELL U3223QE"] = { cols = 4, rows = 3, modifier = {"ctrl", "alt"} }
-        }
+        custom = {}
     },
 
-    -- Zone configurations (can be modified by user)
+    -- Zone configurations
     zone_configs = {}
-}
-
--- Default configurations for each zone key
-local DEFAULT_ZONE_CONFIGS = {
-    -- Format: key = { array of grid coordinates to cycle through }
-
-    -- Left side of keyboard - left side of screen
-    ["y"] = {"a1:a2", "a1", "a1:b2"}, -- Top-left region with added a1:b2 (semi-quarter)
-    ["h"] = {"a1:b3", "a1:a3", "a1:c3", "a2"}, -- Left side in various widths
-    ["n"] = {"a3", "a2:a3", "a3:b3"}, -- Bottom-left with added a3:b3 (semi-quarter)
-    ["u"] = {"b1:b3", "b1:b2", "b1"}, -- Middle column region variations
-    ["j"] = {"b1:c3", "b1:b3", "b2"}, -- Middle area variations
-    ["m"] = {"b1:b3", "b2:c3", "b3"}, -- Right-middle column variations
-
-    -- Right side of keyboard - right side of screen
-    ["i"] = {"d1:d3", "d1:d2", "d1"}, -- Right column variations (mirrors "u")
-    ["k"] = {"c1:d3", "c1:c3", "c2"}, -- Right side variations (mirrors "j")
-    [","] = {"d1:d3", "d2:d3", "d3"}, -- Bottom-right corner/region (mirrors "m")
-    ["o"] = {"c1:d1", "d1", "c1:d2"}, -- Top-right with added c1:d2 (semi-quarter) (mirrors "y")
-    ["l"] = {"d1:d3", "c1:d3", "b1:d3", "d2"}, -- Right columns (mirrors "h")
-    ["."] = {"d3", "d2:d3", "c3:d3"}, -- Bottom-right with added c2:d3 (semi-quarter)  (mirrors "n")
-
-    -- Center key for center position
-    ["0"] = {"b2:c2", "b1:c3", "a1:d3"}, -- Quarter, two-thirds, full screen
-
-    -- Fallback for any key without specific config
-    ["default"] = {"full", "center", "left-half", "right-half", "top-half", "bottom-half"}
 }
 
 -- Debug logging function
@@ -152,6 +109,49 @@ local function debug_log(...)
     if tiler.config.debug then
         print("[TilerDebug]", ...)
     end
+end
+
+-- Function to set configuration from config.lua
+function tiler.set_config()
+    -- Load basic settings
+    tiler.config = {
+        debug = config.tiler.debug,
+        modifier = config.tiler.modifier,
+        focus_modifier = config.tiler.focus_modifier,
+        flash_on_focus = config.tiler.flash_on_focus,
+        smart_placement = config.tiler.smart_placement,
+        margins = config.tiler.margins,
+        problem_apps = config.tiler.problem_apps
+    }
+
+    -- Load custom layouts
+    if config.tiler.layouts and config.tiler.layouts.custom then
+        tiler.layouts.custom = config.tiler.layouts.custom
+    end
+
+    -- Load default zone configurations
+    tiler.default_zone_configs = config.tiler.default_zone_configs
+
+    -- Initialize zone_configs with the default values
+    for key, value in pairs(tiler.default_zone_configs) do
+        tiler.zone_configs[key] = value
+    end
+
+    -- Set up screen-specific configs
+    tiler.zone_configs_by_screen = {}
+
+    -- Load portrait_zones for the LG screen if applicable
+    if config.tiler.portrait_zones then
+        tiler.zone_configs_by_screen["LG IPS QHD"] = {}
+
+        -- Copy portrait_zones configs
+        for key, value in pairs(config.tiler.portrait_zones) do
+            tiler.zone_configs_by_screen["LG IPS QHD"][key] = value
+        end
+    end
+
+    debug_log("Configuration loaded from config.lua")
+    return tiler
 end
 
 ------------------------------------------
@@ -1649,29 +1649,24 @@ end
 local function get_zone_tiles(screen, zone_key, rows, cols)
     -- Get the screen name
     local screen_name = screen:name()
-    local config = nil
+    local config_entry = nil
 
     -- First check if there are screen-specific configurations
     if tiler.zone_configs_by_screen then
         -- Check if there's a config for this specific screen
         if tiler.zone_configs_by_screen[screen_name] and tiler.zone_configs_by_screen[screen_name][zone_key] then
-            config = tiler.zone_configs_by_screen[screen_name][zone_key]
+            config_entry = tiler.zone_configs_by_screen[screen_name][zone_key]
             debug_log("Using screen-specific zone config for " .. screen_name .. ", key: " .. zone_key)
         end
     end
 
     -- If no screen-specific config found, check general zone configs
-    if not config then
-        config = tiler.zone_configs[zone_key] or DEFAULT_ZONE_CONFIGS[zone_key]
-    end
-
-    -- If no specific config, use the default
-    if not config then
-        config = DEFAULT_ZONE_CONFIGS["default"]
+    if not config_entry then
+        config_entry = tiler.zone_configs[zone_key] or tiler.zone_configs["default"]
     end
 
     -- If the config is an empty table, return empty tiles
-    if config and #config == 0 then
+    if config_entry and #config_entry == 0 then
         debug_log("Zone " .. zone_key .. " disabled for screen " .. screen_name)
         return {}
     end
@@ -1679,7 +1674,7 @@ local function get_zone_tiles(screen, zone_key, rows, cols)
     -- Process the tiles
     local tiles = {}
 
-    for _, coords in ipairs(config) do
+    for _, coords in ipairs(config_entry) do
         local tile = create_tile_from_grid_coords(screen, coords, rows, cols)
         if tile then
             table.insert(tiles, tile)
@@ -2158,54 +2153,17 @@ function calculate_overlap_area(win_frame, tile)
     return x_overlap * y_overlap
 end
 
-function tiler.start(config)
+function tiler.start()
     debug_log("Starting Tiler v" .. tiler._version)
 
-    -- Apply any configuration passed to start
-    if config then
-        if config.debug ~= nil then
-            tiler.config.debug = config.debug
-        end
+    -- Load configuration from config.lua
+    tiler.set_config()
 
-        if config.modifier then
-            tiler.config.modifier = config.modifier
-        end
-
-        -- Apply margin settings if provided
-        if config.margins then
-            if config.margins.enabled ~= nil then
-                tiler.config.margins.enabled = config.margins.enabled
-            end
-
-            if config.margins.size ~= nil then
-                tiler.config.margins.size = config.margins.size
-            end
-
-            if config.margins.screen_edge ~= nil then
-                tiler.config.margins.screen_edge = config.margins.screen_edge
-            end
-
-            debug_log("Using margin settings: enabled=" .. tostring(tiler.config.margins.enabled) .. ", size=" ..
-                          tostring(tiler.config.margins.size) .. ", screen_edge=" ..
-                          tostring(tiler.config.margins.screen_edge))
-        end
-
-        if config.layouts and config.layouts.custom then
-            for screen_name, layout in pairs(config.layouts.custom) do
-                tiler.layouts.custom[screen_name] = layout
-            end
-        end
-
-        if config.zone_configs then
-            for key, configs in pairs(config.zone_configs) do
-                tiler.zone_configs[key] = configs
-            end
-        end
-
-        -- Add support for screen-specific zone configurations
-        if config.zone_configs_by_screen then
-            tiler.zone_configs_by_screen = config.zone_configs_by_screen
-        end
+    -- Log margin settings for debugging
+    if tiler.config.debug then
+        debug_log("Using margin settings: enabled=" .. tostring(tiler.config.margins.enabled) .. ", size=" ..
+                      tostring(tiler.config.margins.size) .. ", screen_edge=" ..
+                      tostring(tiler.config.margins.screen_edge))
     end
 
     -- Initialize the tiler
@@ -2236,12 +2194,6 @@ function tiler.start(config)
         tiler.config.debug = not tiler.config.debug
         debug_log("Debug mode: " .. (tiler.config.debug and "enabled" or "disabled"))
     end)
-
-    -- Setup screen movement keys
-    tiler.setup_screen_movement_keys()
-
-    -- Setup screen focus movement keys
-    tiler.setup_screen_focus_keys()
 
     -- Map existing windows (with slight delay to ensure layouts are fully initialized)
     hs.timer.doAfter(0.5, function()
