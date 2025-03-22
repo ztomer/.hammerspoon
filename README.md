@@ -17,7 +17,7 @@ A modular and powerful window management system for macOS that includes window t
 
 ## Project Structure
 
-```
+```text
 ~/.hammerspoon/
 ├── init.lua              # Main initialization file
 ├── config.lua            # Central configuration
@@ -39,7 +39,7 @@ A modular and powerful window management system for macOS that includes window t
 
 The keyboard layout maps directly to screen positions:
 
-```
+```text
     y    u    i    o    p
     h    j    k    l    ;
     n    m    ,    .    /
@@ -48,16 +48,19 @@ The keyboard layout maps directly to screen positions:
 Each key corresponds to a specific zone on the screen grid:
 
 #### Left Side Keys (Left Side of Screen)
+
 - `y`: Top-left region cycling: full height of left column → top-left cell
 - `h`: Left side cycling: left two columns → left column → left three columns
 - `n`: Bottom-left cycling: bottom-left cell → bottom half of left column
 
 #### Middle Keys (Middle of Screen)
+
 - `u`: Middle-top cycling: middle column → top half of middle column → top-middle cell
 - `j`: Middle cycling: middle-right columns → middle column → middle cell
 - `m`: Bottom-middle cycling: right-middle column → bottom half of middle column → bottom-middle cell
 
 #### Right Side Keys (Right Side of Screen)
+
 - `i`: Top-right cycling: right column → top half of right column → top-right cell
 - `k`: Right side cycling: two rightmost columns → right column → middle-right cell
 - `,`: Bottom-right cycling: bottom-right cell → bottom half of right column
@@ -66,27 +69,33 @@ Each key corresponds to a specific zone on the screen grid:
 - `.`: Bottom-right cycling: bottom-right two cells wide → bottom-right cell
 
 #### Special Positions
+
 - `0`: Center cycling: center quarter → center two-thirds → full screen
 
 ### Window Movement Between Screens
+
 - `Ctrl+Cmd+p`: Move current window to the next screen
 - `Ctrl+Cmd+;`: Move current window to the previous screen
 
 ### Focus Management
+
 - `Shift+Ctrl+Cmd+[zone key]`: Focus on windows in that zone (cycles through windows)
 - `Shift+Ctrl+Cmd+p`: Move focus to next screen
 - `Shift+Ctrl+Cmd+;`: Move focus to previous screen
 
 ### App Switching (Shift+Ctrl)
+
 - `Shift+Ctrl+[key]`: Launch or toggle application based on key bindings in config.lua
 - `Shift+Ctrl+/`: Display help with keyboard shortcuts
 
 ### Pomodoro Timer
+
 - `Ctrl+Cmd+9`: Start pomodoro timer
 - `Ctrl+Cmd+0`: Pause/reset pomodoro timer
 - `Shift+Ctrl+Cmd+0`: Reset work count
 
 ### Utility Functions
+
 - `Hyper+- (minus)`: Display window hints
 - `Hyper+= (equals)`: Launch Activity Monitor
 - `Shift+Ctrl+Cmd+R`: Reload configuration
@@ -181,7 +190,7 @@ config.pomodoro = {
 
 The tiler uses a grid coordinate system with alphabetic columns and numeric rows:
 
-```
+```text
     a    b    c    d
   +----+----+----+----+
 1 | a1 | b1 | c1 | d1 |
@@ -258,6 +267,7 @@ end)
 - [x] Focus on Zone keyboard shortcut (Switch to the topmost window in a zone and cycle through them)
 - [x] Cross-screen focus navigation (Move focus between screens with keyboard shortcuts)
 - [x] Smart window mapping (Automatically detect and map existing windows to appropriate zones)
+- [X] Window stacking within zones (keep multiple windows in a single zone and cycle through them)
 - [x] Modular architecture (Split functionality into separate modules with central configuration)
 - [ ] Application-aware layouts (Save preferred zones for specific applications)
 - [ ] Automatically arrange windows based on predefined layouts
@@ -266,7 +276,6 @@ end)
 - [ ] Automatic window resizing based on content
 - [ ] Save and load window layouts
 - [ ] Support for Mac spaces
-- [ ] Window stacking within zones (keep multiple windows in a single zone and cycle through them)
 - [ ] Grid visualization overlay (display the grid layout temporarily when positioning windows)
 - [ ] Mouse-based zone selection (Shift+drag to select a custom zone)
 - [ ] Zone presets (quickly switch between different zone layouts)
