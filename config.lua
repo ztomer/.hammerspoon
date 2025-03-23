@@ -65,54 +65,33 @@ config.pomodoro = {
 
 -- Tiler settings
 config.tiler = {
-    debug = true, -- Enable debug logging
-    modifier = {"ctrl", "cmd"}, -- Set default modifier keys
-    focus_modifier = {"shift", "ctrl", "cmd"}, -- Default modifier for focus commands
+    debug = true,
+    modifier = {"ctrl", "cmd"},
+    focus_modifier = {"shift", "ctrl", "cmd"},
     flash_on_focus = true,
-    smart_placement = true, -- Enable smart placement of new windows
+    smart_placement = true,
 
-    -- Add window margin configuration
     margins = {
-        enabled = true, -- Enable margins between windows
-        size = 5, -- Use 5 pixels for margins (adjust as needed)
-        screen_edge = true -- Apply margins to screen edges too
+        enabled = true,
+        size = 5,
+        screen_edge = true
     },
 
-    -- List of apps that need special window positioning handling
-    problem_apps = {"Firefox", "Zen" -- Add other problematic apps here
-    },
+    problem_apps = {"Firefox", "Zen"},
 
     -- Screen detection configuration
     screen_detection = {
-        -- Special screen name patterns and their preferred layouts
+        -- Special screen name patterns and corresponding layout type
         patterns = {
-            ["DELL.*U32"] = {
-                cols = 4,
-                rows = 3
-            }, -- Dell 32-inch monitors
-            ["LG.*QHD"] = {
-                cols = 1,
-                rows = 3
-            }, -- LG QHD in portrait mode
-            ["Built[-]?in"] = {
-                cols = 2,
-                rows = 2
-            }, -- MacBook built-in displays
-            ["Color LCD"] = {
-                cols = 2,
-                rows = 2
-            }, -- MacBook displays
-            ["internal"] = {
-                cols = 2,
-                rows = 2
-            }, -- Internal displays
-            ["MacBook"] = {
-                cols = 2,
-                rows = 2
-            } -- MacBook displays
+            ["DELL.*U32"] = "4x3", -- Dell 32-inch monitors
+            ["LG.*QHD"] = "1x3", -- LG QHD in portrait mode
+            ["Built[-]?in"] = "2x2", -- MacBook built-in displays
+            ["Color LCD"] = "2x2", -- MacBook displays
+            ["internal"] = "2x2", -- Internal displays
+            ["MacBook"] = "2x2" -- MacBook displays
         },
 
-        -- Size-based layouts (screen diagonal in inches)
+        -- Size-based layout selection
         sizes = {
             large = {
                 min = 27,
@@ -134,85 +113,114 @@ config.tiler = {
             } -- Under 20" - 2x2 grid
         },
 
-        -- Portrait mode layouts
+        -- Portrait mode detection
         portrait = {
             large = {
                 min = 23,
                 layout = "1x3"
-            }, -- 23" and larger in portrait - 1x3 grid
+            }, -- 23" and larger in portrait
             small = {
                 max = 22.9,
                 layout = "1x2"
-            } -- Under 23" in portrait - 1x2 grid
+            } -- Under 23" in portrait
         }
     },
 
-    -- Custom layouts for specific screens
-    layouts = {
-        custom = {
-            ["DELL U3223QE"] = {
+    -- Grid specifications
+    grids = {
+        ["4x3"] = {
+            cols = 4,
+            rows = 3
+        },
+        ["3x3"] = {
+            cols = 3,
+            rows = 3
+        },
+        ["3x2"] = {
+            cols = 3,
+            rows = 2
+        },
+        ["2x2"] = {
+            cols = 2,
+            rows = 2
+        },
+        ["portrait"] = {
+            cols = 1,
+            rows = 3
+        },
+        ["portrait_small"] = {
+            cols = 1,
+            rows = 2
+        }
+    },
+
+    -- Custom layouts for specific screens (by exact name)
+    custom_screens = {
+        ["DELL U3223QE"] = {
+            grid = {
                 cols = 4,
                 rows = 3
             },
-            ["LG IPS QHD"] = {
+            layout = "4x3"
+        },
+        ["LG IPS QHD"] = {
+            grid = {
                 cols = 1,
                 rows = 3
-            } -- 1×3 for portrait LG
+            },
+            layout = "1x3"
         }
     },
 
-    -- Default configurations for each zone key
-    default_zone_configs = {
-        -- Format: key = { array of grid coordinates to cycle through }
+    -- Layout configurations - key bindings for each layout type
+    layouts = {
+        -- 4x3 layout (large displays)
+        ["4x3"] = {
+            ["y"] = {"a1:a2", "a1", "a1:b2"},
+            ["h"] = {"a1:b3", "a1:a3", "a1:c3", "a2"},
+            ["n"] = {"a3", "a2:a3", "a3:b3"},
+            ["u"] = {"b1:b3", "b1:b2", "b1"},
+            ["j"] = {"b1:c3", "b1:b3", "b2", "b1:d4"},
+            ["m"] = {"b1:b3", "b2:c3", "b3"},
+            ["i"] = {"d1:d3", "d1:d2", "d1"},
+            ["k"] = {"c1:d3", "c1:c3", "c2"},
+            [","] = {"d1:d3", "d2:d3", "d3"},
+            ["o"] = {"c1:d1", "d1", "c1:d2"},
+            ["l"] = {"d1:d3", "c1:d3", "b1:d3", "d2"},
+            ["."] = {"d3", "d2:d3", "c3:d3"}
+        },
 
-        -- Left side of keyboard - left side of screen
-        ["y"] = {"a1:a2", "a1", "a1:b2"}, -- Top-left region with added a1:b2 (semi-quarter)
-        ["h"] = {"a1:b3", "a1:a3", "a1:c3", "a2"}, -- Left side in various widths
-        ["n"] = {"a3", "a2:a3", "a3:b3"}, -- Bottom-left with added a3:b3 (semi-quarter)
-        ["u"] = {"b1:b3", "b1:b2", "b1"}, -- Middle column region variations
-        ["j"] = {"b1:c3", "b1:b3", "b2", "b1:d4"}, -- Middle area variations
-        ["m"] = {"b1:b3", "b2:c3", "b3"}, -- Right-middle column variations
+        -- 2x2 layout (small displays, laptop)
+        ["2x2"] = {
+            ["y"] = {"a1", "a1:a2", "a1:b1"}, -- Top-left
+            ["h"] = {"a1:a2", "a1:b2"}, -- Left tile
+            ["n"] = {"a2", "a2:b2"}, -- Bottom-left
+            ["u"] = {"a1:b1", "b1"}, -- Top tile
+            ["j"] = {"a1:b2"}, -- Center (full screen)
+            ["m"] = {"a2:b2", "b2"}, -- Bottom tile
+            ["i"] = {"b1", "a1:b1"}, -- Top-right
+            ["k"] = {"b1:b2", "b2"}, -- Right tile
+            ["0"] = {"a1:b2", "a1:b1", "a2:b2"}, -- Fullscreen variants
+            [","] = {"b2", "a2:b2"} -- Bottom-right
+        },
 
-        -- Right side of keyboard - right side of screen
-        ["i"] = {"d1:d3", "d1:d2", "d1"}, -- Right column variations (mirrors "u")
-        ["k"] = {"c1:d3", "c1:c3", "c2"}, -- Right side variations (mirrors "j")
-        [","] = {"d1:d3", "d2:d3", "d3"}, -- Bottom-right corner/region (mirrors "m")
-        ["o"] = {"c1:d1", "d1", "c1:d2"}, -- Top-right with added c1:d2 (semi-quarter) (mirrors "y")
-        ["l"] = {"d1:d3", "c1:d3", "b1:d3", "d2"}, -- Right columns (mirrors "h")
-        ["."] = {"d3", "d2:d3", "c3:d3"}, -- Bottom-right with added c2:d3 (semi-quarter)  (mirrors "n")
-
-        -- Center key for center position
-        ["0"] = {"b2:c2", "b1:c3", "a1:d3"}, -- Quarter, two-thirds, full screen
-
-        -- Fallback for any key without specific config
-        ["default"] = {"full", "center", "left-half", "right-half", "top-half", "bottom-half"}
-    },
-
-    -- Custom zone configs for portrait mode
-    portrait_zones = {
-        -- Top section
-        ["y"] = {"a1", "a1:a2"}, -- Top cell, and top two cells
-
-        -- Middle section
-        ["h"] = {"a2", "a1:a3"}, -- Middle cell, and entire column
-
-        -- Bottom section
-        ["n"] = {"a3", "a2:a3"}, -- Bottom cell, and bottom two cells
-
-        -- Disable other zones by setting them to empty tables
-        ["u"] = {},
-        ["j"] = {},
-        ["m"] = {},
-        ["i"] = {},
-        ["k"] = {},
-        [","] = {},
-        ["o"] = {},
-        ["l"] = {},
-        ["."] = {},
-
-        -- Center key still works for full-screen
-        ["0"] = {"a1:a3", "a2", "a1"} -- Full column, middle, top
+        -- Portrait layout
+        ["1x3"] = {
+            ["y"] = {"a1", "a1:a2"},
+            ["h"] = {"a2", "a1:a3"},
+            ["n"] = {"a3", "a2:a3"},
+            ["0"] = {"a1:a3", "a2", "a1"}
+        },
+        -- 1x2 layout
+        ["1x2"] = {
+            ["y"] = {"a1"},
+            ["h"] = {"a2"},
+            ["0"] = {"a1:a2", "a1", "a2"}
+        },
+        -- Default fallback for any layout/key not specifically defined
+        ["default"] = {
+            ["default"] = {"full", "center", "left-half", "right-half", "top-half", "bottom-half"}
+        }
     }
 }
-
 return config

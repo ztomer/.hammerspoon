@@ -113,7 +113,7 @@ end
 
 -- Function to set configuration from config.lua
 function tiler.set_config()
-    -- Load basic settings
+    -- Load from config.lua
     tiler.config = {
         debug = config.tiler.debug,
         modifier = config.tiler.modifier,
@@ -124,29 +124,11 @@ function tiler.set_config()
         problem_apps = config.tiler.problem_apps
     }
 
-    -- Load custom layouts
-    if config.tiler.layouts and config.tiler.layouts.custom then
-        tiler.layouts.custom = config.tiler.layouts.custom
-    end
-
-    -- Load default zone configurations
-    tiler.default_zone_configs = config.tiler.default_zone_configs
-
-    -- Initialize zone_configs with the default values
-    for key, value in pairs(tiler.default_zone_configs) do
-        tiler.zone_configs[key] = value
-    end
-
-    -- Set up screen-specific configs
-    tiler.zone_configs_by_screen = {}
-
-    -- Load portrait_zones for the LG screen if applicable
-    if config.tiler.portrait_zones then
-        tiler.zone_configs_by_screen["LG IPS QHD"] = {}
-
-        -- Copy portrait_zones configs
-        for key, value in pairs(config.tiler.portrait_zones) do
-            tiler.zone_configs_by_screen["LG IPS QHD"][key] = value
+    -- Use custom layouts from config
+    if config.tiler.custom_screens then
+        tiler.layouts.custom = {}
+        for screen_name, layout in pairs(config.tiler.custom_screens) do
+            tiler.layouts.custom[screen_name] = layout.grid
         end
     end
 
@@ -954,12 +936,13 @@ local function handle_window_event(win_obj, appName, event_name)
     end
 end
 
--- Handle windows when displays are changed
+-- Handles screen configuration changes
 local function handle_display_change()
     debug_log("Screen configuration changed")
 
-    -- Clear existing modes since screen positions may have changed
+    -- Clear existing modes and zones
     tiler._modes = {}
+    tiler._zone_id2zone = {} -- Clear zone mappings to rebuild
 
     for _, screen in pairs(hs.screen.allScreens()) do
         local screen_id = screen:id()
@@ -982,9 +965,15 @@ local function handle_display_change()
         init_mode(screen, mode_config)
     end
 
-    -- Resize windows that are assigned to zones
-    -- Use a delayed callback to ensure windows have settled after display change
+    -- Add a small delay to map windows to new zones first
+    hs.timer.doAfter(0.3, function()
+        debug_log("Mapping windows to new screen configuration")
+        tiler.map_existing_windows()
+    end)
+
+    -- Then resize windows with another delay
     hs.timer.doAfter(0.5, function()
+        debug_log("Resizing windows after screen change")
         for window_id, zone_id in pairs(tiler._window_id2zone_id) do
             local zone = tiler._zone_id2zone[zone_id]
             if zone then
@@ -1352,29 +1341,28 @@ function get_mode_for_screen(screen)
     local width = screen_frame.w
     local height = screen_frame.h
     local is_portrait = height > width
+    local screen_name = screen:name()
 
     debug_log(string.format("Screen dimensions: %.1f x %.1f", width, height))
-
-    -- Get screen name for better identification
-    local screen_name = screen:name()
     debug_log("Screen name: " .. screen_name)
 
-    -- First check if there's a custom layout for this specific screen
-    if tiler.layouts.custom[screen_name] then
-        local config = tiler.layouts.custom[screen_name]
-        debug_log("Using custom layout for screen:", screen_name)
-        return config
+    -- 1. Check for custom screen layout (exact match)
+    if config.tiler.custom_screens[screen_name] then
+        debug_log("Using custom layout for screen: " .. screen_name)
+        return config.tiler.custom_screens[screen_name].grid
     end
 
-    -- Check for pattern matches in screen name
-    for pattern, layout in pairs(config.tiler.screen_detection.patterns) do
+    -- 2. Check for pattern match in screen name
+    for pattern, layout_type in pairs(config.tiler.screen_detection.patterns) do
         if screen_name:match(pattern) then
-            debug_log("Matched screen pattern: " .. pattern .. " - using layout", layout.cols .. "x" .. layout.rows)
-            return layout
+            debug_log("Matched screen pattern: " .. pattern .. " - using layout: " .. layout_type)
+            if config.tiler.grids[layout_type] then
+                return config.tiler.grids[layout_type]
+            end
         end
     end
 
-    -- Try to extract screen size from name
+    -- 3. Try to extract screen size from name
     local size_pattern = "(%d+)[%s%-]?inch"
     local size_match = screen_name:match(size_pattern)
 
@@ -1385,37 +1373,48 @@ function get_mode_for_screen(screen)
         if is_portrait then
             -- Portrait mode layouts
             for _, size_config in pairs(config.tiler.screen_detection.portrait) do
-                if (size_config.min and screen_size >= size_config.min) or
-                    (size_config.max and screen_size <= size_config.max) or
-                    (size_config.min and size_config.max and screen_size >= size_config.min and screen_size <=
-                        size_config.max) then
+                local matches = false
+                if size_config.min and size_config.max then
+                    matches = screen_size >= size_config.min and screen_size <= size_config.max
+                elseif size_config.min then
+                    matches = screen_size >= size_config.min
+                elseif size_config.max then
+                    matches = screen_size <= size_config.max
+                end
+
+                if matches and config.tiler.grids[size_config.layout] then
                     debug_log("Using portrait layout: " .. size_config.layout)
-                    return size_config.layout
+                    return config.tiler.grids[size_config.layout]
                 end
             end
         else
-            -- Landscape mode layouts
+            -- Landscape mode layouts based on size
             for _, size_config in pairs(config.tiler.screen_detection.sizes) do
-                if (size_config.min and screen_size >= size_config.min) or
-                    (size_config.max and screen_size <= size_config.max) or
-                    (size_config.min and size_config.max and screen_size >= size_config.min and screen_size <=
-                        size_config.max) then
-                    debug_log("Using landscape layout: " .. size_config.layout)
-                    return size_config.layout
+                local matches = false
+                if size_config.min and size_config.max then
+                    matches = screen_size >= size_config.min and screen_size <= size_config.max
+                elseif size_config.min then
+                    matches = screen_size >= size_config.min
+                elseif size_config.max then
+                    matches = screen_size <= size_config.max
+                end
+
+                if matches and config.tiler.grids[size_config.layout] then
+                    debug_log("Using size-based layout: " .. size_config.layout)
+                    return config.tiler.grids[size_config.layout]
                 end
             end
         end
     end
 
-    -- Fallback to resolution-based detection
+    -- 4. Resolution-based fallback
     if is_portrait then
-        -- Portrait orientation
         if width >= 1440 or height >= 2560 then
             debug_log("High-resolution portrait screen - using 1x3 layout")
-            return "1x3"
+            return config.tiler.grids["1x3"]
         else
             debug_log("Standard portrait screen - using 1x2 layout")
-            return "1x2"
+            return config.tiler.grids["1x2"]
         end
     else
         -- Landscape orientation
@@ -1423,30 +1422,27 @@ function get_mode_for_screen(screen)
         local is_ultrawide = aspect_ratio > 2.0
 
         if width >= 3840 or height >= 2160 then
-            -- 4K or higher
             debug_log("Detected 4K or higher resolution - using 4x3 layout")
-            return "4x3"
+            return config.tiler.grids["4x3"]
         elseif width >= 3440 or is_ultrawide then
-            -- Ultrawide or similar
             debug_log("Detected ultrawide monitor - using 4x2 layout")
-            return "4x2"
+            return {
+                cols = 4,
+                rows = 2
+            }
         elseif width >= 2560 or height >= 1440 then
-            -- QHD/WQHD (1440p) or similar
             debug_log("Detected 1440p resolution - using 3x3 layout")
-            return "3x3"
+            return config.tiler.grids["3x3"]
         elseif width >= 1920 or height >= 1080 then
-            -- Full HD (1080p) or similar
             debug_log("Detected 1080p resolution - using 3x2 layout")
-            return "3x2"
+            return config.tiler.grids["3x2"]
         else
-            -- Smaller resolutions
             debug_log("Detected smaller resolution - using 2x2 layout")
-            return "2x2"
+            return config.tiler.grids["2x2"]
         end
     end
 end
-
---------------------------
+----------------------
 -- Layout Initialization
 --------------------------
 
@@ -1606,33 +1602,80 @@ end
 
 -- Get all tiles for a zone configuration
 local function get_zone_tiles(screen, zone_key, rows, cols)
-    -- Get the screen name
     local screen_name = screen:name()
-    local config_entry = nil
+    local layout_type = nil
 
-    -- First check if there are screen-specific configurations
-    if tiler.zone_configs_by_screen then
-        -- Check if there's a config for this specific screen
-        if tiler.zone_configs_by_screen[screen_name] and tiler.zone_configs_by_screen[screen_name][zone_key] then
-            config_entry = tiler.zone_configs_by_screen[screen_name][zone_key]
-            debug_log("Using screen-specific zone config for " .. screen_name .. ", key: " .. zone_key)
+    debug_log(
+        "get_zone_tiles for screen: " .. screen_name .. ", key: " .. zone_key .. ", rows: " .. rows .. ", cols: " ..
+            cols)
+
+    -- 1. Check for custom screens - exact match by name
+    if config.tiler.custom_screens and config.tiler.custom_screens[screen_name] then
+        layout_type = config.tiler.custom_screens[screen_name].layout
+        debug_log("Using custom screen layout: " .. layout_type)
+
+        -- 2. Check for pattern matches in screen names
+    elseif config.tiler.screen_detection and config.tiler.screen_detection.patterns then
+        for pattern, layout in pairs(config.tiler.screen_detection.patterns) do
+            if screen_name:match(pattern) then
+                layout_type = layout
+                debug_log("Matched screen pattern: " .. pattern .. " using layout: " .. layout_type)
+                break
+            end
         end
     end
 
-    -- If no screen-specific config found, check general zone configs
-    if not config_entry then
-        config_entry = tiler.zone_configs[zone_key] or tiler.zone_configs["default"]
+    -- 3. If no match by screen name/pattern, attempt to match by grid dimensions
+    if not layout_type then
+        -- Look through all grid definitions to find a match
+        if config.tiler.grids then
+            for lt, grid in pairs(config.tiler.grids) do
+                if grid.cols == cols and grid.rows == rows then
+                    layout_type = lt
+                    debug_log("Matched grid dimensions " .. cols .. "x" .. rows .. " to layout: " .. layout_type)
+                    break
+                end
+            end
+        end
+    end
+
+    -- 4. If still no match, default to the string representation
+    if not layout_type then
+        layout_type = cols .. "x" .. rows
+        debug_log("No layout match found, using dimensional name: " .. layout_type)
+    end
+
+    -- Get zone configuration for this layout and key
+    local config_entry = nil
+
+    -- First try exact layout and key match
+    if config.tiler.layouts and config.tiler.layouts[layout_type] and config.tiler.layouts[layout_type][zone_key] then
+        config_entry = config.tiler.layouts[layout_type][zone_key]
+        debug_log("Using " .. layout_type .. " layout for zone key: " .. zone_key)
+
+        -- Try default layout for this key
+    elseif config.tiler.layouts and config.tiler.layouts["default"] and config.tiler.layouts["default"][zone_key] then
+        config_entry = config.tiler.layouts["default"][zone_key]
+        debug_log("Using default layout for zone key: " .. zone_key)
+
+        -- Last resort - general default
+    elseif config.tiler.layouts and config.tiler.layouts["default"] and config.tiler.layouts["default"]["default"] then
+        config_entry = config.tiler.layouts["default"]["default"]
+        debug_log("Using default fallback for zone key: " .. zone_key)
+    else
+        -- If all else fails, provide a sensible default
+        config_entry = {"full", "center"}
+        debug_log("No configuration found, using hardcoded default for zone key: " .. zone_key)
     end
 
     -- If the config is an empty table, return empty tiles
     if config_entry and #config_entry == 0 then
-        debug_log("Zone " .. zone_key .. " disabled for screen " .. screen_name)
+        debug_log("Zone " .. zone_key .. " disabled for layout " .. layout_type)
         return {}
     end
 
     -- Process the tiles
     local tiles = {}
-
     for _, coords in ipairs(config_entry) do
         local tile = create_tile_from_grid_coords(screen, coords, rows, cols)
         if tile then
@@ -1663,18 +1706,19 @@ local function create_grid_layout(screen, cols, rows, key_map, modifier)
 
     local zones = {}
 
-    -- Create a zone for each grid cell
-    for r = 1, rows do
-        for c = 1, cols do
-            local zone_id = key_map[r][c] or (r .. "_" .. c)
-            local key = key_map[r][c]
+    -- Get layout type based on grid dimensions
+    local layout_type = cols .. "x" .. rows
+    debug_log("Layout type for this grid:", layout_type)
 
-            if key then
+    -- Create zones for each key in the layout configuration
+    if config.tiler.layouts and config.tiler.layouts[layout_type] then
+        for key, _ in pairs(config.tiler.layouts[layout_type]) do
+            if key ~= "default" then -- Skip default fallback
                 local hotkey = modifier and key and {modifier, key}
-                debug_log("Creating zone", zone_id, "with hotkey", key)
+                debug_log("Creating zone", key, "with hotkey", key)
 
-                local zone = Zone.new(zone_id, hotkey, screen):set_description(string.format(
-                    "Row %d, Col %d - Screen: %s", r, c, screen:name()))
+                local zone = Zone.new(key, hotkey, screen):set_description(
+                    string.format("Zone %s - Screen: %s", key, screen:name()))
 
                 -- Get tile configurations for this zone
                 local zone_tiles = get_zone_tiles(screen, key, rows, cols)
@@ -1684,15 +1728,48 @@ local function create_grid_layout(screen, cols, rows, key_map, modifier)
                     zone:add_tile(tile.x, tile.y, tile.width, tile.height, tile.description)
                 end
 
-                -- If no tiles were added, add a default one
+                -- If no tiles were added, add a default one based on position
                 if zone.tile_count == 0 then
-                    local zone_x = x + (c - 1) * col_width
-                    local zone_y = y + (r - 1) * row_height
-                    zone:add_tile(zone_x, zone_y, col_width, row_height, "Default size")
+                    -- For now, use full screen as default
+                    zone:add_tile(x, y, w, h, "Default size")
                 end
 
                 zone:register()
                 table.insert(zones, zone)
+            end
+        end
+    else
+        -- Fallback to the old key mapping approach
+        for r = 1, rows do
+            for c = 1, cols do
+                local zone_id = key_map[r][c] or (r .. "_" .. c)
+                local key = key_map[r][c]
+
+                if key then
+                    local hotkey = modifier and key and {modifier, key}
+                    debug_log("Creating zone", zone_id, "with hotkey", key)
+
+                    local zone = Zone.new(zone_id, hotkey, screen):set_description(string.format(
+                        "Row %d, Col %d - Screen: %s", r, c, screen:name()))
+
+                    -- Get tile configurations for this zone
+                    local zone_tiles = get_zone_tiles(screen, key, rows, cols)
+
+                    -- Add each tile to the zone
+                    for _, tile in ipairs(zone_tiles) do
+                        zone:add_tile(tile.x, tile.y, tile.width, tile.height, tile.description)
+                    end
+
+                    -- If no tiles were added, add a default one
+                    if zone.tile_count == 0 then
+                        local zone_x = x + (c - 1) * col_width
+                        local zone_y = y + (r - 1) * row_height
+                        zone:add_tile(zone_x, zone_y, col_width, row_height, "Default size")
+                    end
+
+                    zone:register()
+                    table.insert(zones, zone)
+                end
             end
         end
     end
@@ -1729,6 +1806,11 @@ local function create_grid_layout(screen, cols, rows, key_map, modifier)
 end
 
 function init_mode(screen, mode_config)
+    debug_log("Creating zones for layout: " .. tostring(mode_config))
+    for key, _ in pairs(config.tiler.layouts["2x2"]) do
+        debug_log("Registering hotkey for: " .. key)
+    end
+
     local grid_cols, grid_rows, key_map, modifier
 
     if type(mode_config) == "string" then
