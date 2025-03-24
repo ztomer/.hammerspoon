@@ -88,6 +88,7 @@ local tiler = {
     _zone_id2zone = {},
     _modes = {},
     _window_watcher = nil,
+    _screen_watcher = nil,
 
     -- Public user configuration tables
     layouts = {
@@ -938,49 +939,53 @@ end
 
 -- Handles screen configuration changes
 local function handle_display_change()
-    debug_log("Screen configuration changed")
+    debug_log("Handling screen configuration change")
 
     -- Clear existing modes and zones
     tiler._modes = {}
     tiler._zone_id2zone = {} -- Clear zone mappings to rebuild
 
-    for _, screen in pairs(hs.screen.allScreens()) do
-        local screen_id = screen:id()
-        local screen_name = screen:name()
-        debug_log("Processing screen:", screen_name, "ID:", screen_id)
+    -- Wait a moment for the OS to fully register all screens
+    hs.timer.doAfter(0.2, function()
+        debug_log("Initializing layouts for screens:")
+        for _, screen in pairs(hs.screen.allScreens()) do
+            local screen_id = screen:id()
+            local screen_name = screen:name()
+            debug_log("Processing screen:", screen_name, "ID:", screen_id)
 
-        -- Check for custom configuration for this specific screen
-        local mode_config
-        if tiler.layouts.custom[screen_name] then
-            debug_log("Using custom layout for screen:", screen_name)
-            mode_config = tiler.layouts.custom[screen_name]
-        else
-            -- Use default configuration based on screen size
-            local mode_type = get_mode_for_screen(screen)
-            debug_log("Using default layout:", mode_type)
-            mode_config = mode_type
-        end
-
-        -- Initialize mode for this screen
-        init_mode(screen, mode_config)
-    end
-
-    -- Add a small delay to map windows to new zones first
-    hs.timer.doAfter(0.3, function()
-        debug_log("Mapping windows to new screen configuration")
-        tiler.map_existing_windows()
-    end)
-
-    -- Then resize windows with another delay
-    hs.timer.doAfter(0.5, function()
-        debug_log("Resizing windows after screen change")
-        for window_id, zone_id in pairs(tiler._window_id2zone_id) do
-            local zone = tiler._zone_id2zone[zone_id]
-            if zone then
-                debug_log("Resizing window", window_id, "in zone", zone_id)
-                zone:resize_window(window_id)
+            -- Check for custom configuration for this specific screen
+            local mode_config
+            if tiler.layouts.custom[screen_name] then
+                debug_log("Using custom layout for screen:", screen_name)
+                mode_config = tiler.layouts.custom[screen_name]
+            else
+                -- Use default configuration based on screen size
+                local mode_type = get_mode_for_screen(screen)
+                debug_log("Using default layout:", mode_type)
+                mode_config = mode_type
             end
+
+            -- Initialize mode for this screen
+            init_mode(screen, mode_config)
         end
+
+        -- Add a small delay to map windows to new zones first
+        hs.timer.doAfter(0.3, function()
+            debug_log("Mapping windows to new screen configuration")
+            tiler.map_existing_windows()
+        end)
+
+        -- Then resize windows with another delay
+        hs.timer.doAfter(0.5, function()
+            debug_log("Resizing windows after screen change")
+            for window_id, zone_id in pairs(tiler._window_id2zone_id) do
+                local zone = tiler._zone_id2zone[zone_id]
+                if zone then
+                    debug_log("Resizing window", window_id, "in zone", zone_id)
+                    zone:resize_window(window_id)
+                end
+            end
+        end)
     end)
 end
 
@@ -1874,8 +1879,34 @@ local function init_listeners()
         end
     end)
 
-    -- Screen change events
-    hs.screen.watcher.new(handle_display_change):start()
+    -- Enhanced screen change watcher
+    -- Stop any existing watcher first
+    if tiler._screen_watcher then
+        tiler._screen_watcher:stop()
+    end
+
+    -- Create a new watcher with more robust handling
+    tiler._screen_watcher = hs.screen.watcher.new(function()
+        debug_log("Screen configuration change detected by screen watcher")
+
+        -- Add a delay to allow the OS to fully register screens
+        hs.timer.doAfter(0.5, function()
+            -- Get a list of all screens for logging
+            local screens = hs.screen.allScreens()
+            local screen_info = ""
+            for i, screen in ipairs(screens) do
+                screen_info = screen_info .. i .. ": " .. screen:name() .. " (" .. screen:id() .. ")\n"
+            end
+            debug_log("Current screens:\n" .. screen_info)
+
+            -- Call the display change handler
+            handle_display_change()
+        end)
+    end)
+
+    -- Start the screen watcher
+    tiler._screen_watcher:start()
+    debug_log("Screen watcher initialized and started")
 end
 
 -- Configure a custom layout for a screen
@@ -2242,6 +2273,13 @@ function tiler.start()
     end)
 
     debug_log("Tiler initialization complete")
+    return tiler
+end
+
+-- Force screen refresh
+function tiler.refresh_screens()
+    debug_log("Manually refreshing screen configuration")
+    handle_display_change()
     return tiler
 end
 

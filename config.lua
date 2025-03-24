@@ -84,6 +84,7 @@ config.tiler = {
         -- Special screen name patterns and corresponding layout type
         patterns = {
             ["DELL.*U32"] = "4x3", -- Dell 32-inch monitors
+            ["DELL U3223QE"] = "4x3", -- Exact match
             ["LG.*QHD"] = "1x3", -- LG QHD in portrait mode
             ["Built[-]?in"] = "2x2", -- MacBook built-in displays
             ["Color LCD"] = "2x2", -- MacBook displays
