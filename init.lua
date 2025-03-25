@@ -58,6 +58,9 @@ local function init()
     tiler.start() -- Then start the tiler
     tiler.setup_screen_movement_keys()
     tiler.setup_screen_focus_keys()
+    if tiler.window_memory then
+        tiler.window_memory.setup_hotkeys()
+    end
 
     -- Initialize app switching
     appSwitcher.init_bindings(config.appCuts, config.hyperAppCuts, mash_app, HYPER)

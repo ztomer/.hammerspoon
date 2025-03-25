@@ -2225,6 +2225,58 @@ function calculate_overlap_area(win_frame, tile)
     return x_overlap * y_overlap
 end
 
+-- Force screen refresh
+function tiler.refresh_screens()
+    debug_log("Manually refreshing screen configuration")
+    handle_display_change()
+    return tiler
+end
+
+function tiler.init_window_memory()
+    if tiler._window_memory_initialized then
+        return
+    end
+
+    -- Load the window memory module
+    tiler.window_memory = require "modules.window_memory"
+
+    -- Initialize it with a reference to ourselves
+    tiler.window_memory.init(tiler)
+
+    -- Verify window creation handler is set up
+    tiler.check_window_creation_handler()
+
+    -- Double-check after a short delay to catch any issues with handler registration
+    hs.timer.doAfter(1, function()
+        tiler.check_window_creation_handler()
+    end)
+
+    tiler._window_memory_initialized = true
+    return tiler
+end
+
+function tiler.check_window_creation_handler()
+    -- Check if the window creation handler is properly registered
+    local handlers = tiler._window_watcher._fn or {}
+    local has_creation_handler = false
+
+    for event, fns in pairs(handlers) do
+        if event == hs.window.filter.windowCreated then
+            has_creation_handler = (#fns > 0)
+            break
+        end
+    end
+
+    if not has_creation_handler then
+        debug_log("WARNING: No window creation handler found, adding one now")
+        tiler._window_watcher:subscribe(hs.window.filter.windowCreated, tiler.window_memory.handle_window_created)
+    else
+        debug_log("Window creation handler is properly registered")
+    end
+
+    return has_creation_handler
+end
+
 function tiler.start()
     debug_log("Starting Tiler v" .. tiler._version)
 
@@ -2272,15 +2324,15 @@ function tiler.start()
         tiler.map_existing_windows()
     end)
 
-    debug_log("Tiler initialization complete")
-    return tiler
-end
+    -- Initialize window memory if configured
+    if config.window_memory and config.window_memory.enabled ~= false then
+        tiler.init_window_memory()
+    end
 
--- Force screen refresh
-function tiler.refresh_screens()
-    debug_log("Manually refreshing screen configuration")
-    handle_display_change()
+    debug_log("Tiler initialization complete")
+
     return tiler
+
 end
 
 -- Return the tiler object for configuration

@@ -222,6 +222,34 @@ config.tiler = {
         ["default"] = {
             ["default"] = {"full", "center", "left-half", "right-half", "top-half", "bottom-half"}
         }
+    },
+    window_memory = {
+        enabled = true, -- Enable/disable window memory
+        debug = true, -- Enable debug logging
+
+        -- Directory to store position cache files
+        cache_dir = os.getenv("HOME") .. "/.config/tiler",
+        -- Hotkey configuration
+        hotkeys = {
+            capture = {"9", HYPER}, -- HYPER+9 to capture all window positions
+            apply = {"0", HYPER} -- HYPER+0 to apply remembered positions
+        },
+
+        -- Apps to exclude from window memory
+        excluded_apps = {"System Settings", "System Preferences", "Activity Monitor", "Calculator", "Photo Booth",
+                         "Hammerspoon", "KeyCastr", "Installer"},
+
+        -- Fallback auto-tiling settings (used when no cached position exists)
+        auto_tile_fallback = true,
+        default_zone = "center",
+        app_zones = {
+            ["Arc"] = "k",
+            ["iTerm"] = "h",
+            ["Visual Studio Code"] = "h",
+            ["Notion"] = "j",
+            ["Spotify"] = "i"
+        }
     }
+
 }
 return config
