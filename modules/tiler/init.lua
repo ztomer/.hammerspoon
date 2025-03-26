@@ -110,6 +110,39 @@ function tiler.init(config)
     return tiler
 end
 
+--- Debounced handler for window move/resize events (windowBoundsChanged)
+local function handleWindowBoundsChanged(win)
+    if not win or not win:isStandard() then
+        return
+    end
+    local win_id = win:id()
+
+    -- Check if this is a window we're tracking and if it's being positioned by us
+    -- Add a small grace period (e.g., 1 second) to ignore moves/resizes triggered by the tiler itself
+    local window_state = state.getWindowState(win_id)
+    if window_state and window_state.positioning_timer then
+        local time_diff = os.time() - window_state.positioning_timer
+        if time_diff < 1 then
+            -- Optionally log ignored events for debugging:
+            -- logger.debug("Tiler", "Ignoring bounds change shortly after tiler positioning for window %s", win_id)
+            return
+        end
+    end
+
+    -- Debounce window bounds changes using the existing debounce function
+    -- Use "boundsChanged" as the event_type for the timer key
+    tiler._debounceWindowEvent(win, "boundsChanged", function(w)
+        -- Check validity again after delay, as window might be gone
+        if not w or not w:isValid() then
+            return
+        end
+
+        logger.debug("Tiler", "Window %s bounds changed (debounced), remembering position.", w:id())
+        -- Remember window position after user move/resize
+        tiler._rememberWindowPosition(w) -- This function already exists
+    end)
+end
+
 --- Window watcher for handling window events
 function tiler._initEventWatchers()
     logger.debug("Tiler", "Initializing event watchers")
@@ -119,7 +152,7 @@ function tiler._initEventWatchers()
     tiler._window_watcher:setDefaultFilter({})
     tiler._window_watcher:setSortOrder(hs.window.filter.sortByFocusedLast)
 
-    -- Subscribe to window events using a map (recommended approach)
+    -- Subscribe to window events using a map
     tiler._window_watcher:subscribe({
         windowDestroyed = function(win)
             tiler._handleWindowDestroyed(win)
@@ -127,15 +160,14 @@ function tiler._initEventWatchers()
         windowCreated = function(win)
             tiler._handleWindowCreated(win)
         end,
+        -- Use 'windowMoved', which covers both move and resize for hs.window.filter
         windowMoved = function(win)
-            tiler._handleWindowMoved(win)
-        end,
-        windowResized = function(win)
-            tiler._handleWindowResized(win)
+            handleWindowBoundsChanged(win)
         end
+        -- Note: handleWindowBoundsChanged is the consolidated function we added previously
     })
 
-    -- Set up memory-related event handlers
+    -- Set up memory-related event handlers (These look correct)
     events.on("memory.zone.lookup", function(zone_id, win)
         local zone = Zone.getById(zone_id)
         if zone then
@@ -194,7 +226,7 @@ function tiler._initEventWatchers()
     end)
 
     logger.debug("Tiler", "Event watchers initialized")
-end
+end -- End of tiler._initEventWatchers
 
 --- Handle window destroyed event
 function tiler._handleWindowDestroyed(win)
@@ -262,123 +294,6 @@ function tiler._handleWindowCreated(win)
 end
 
 --- Apply window memory to a window
-function tiler._applyWindowMemory(win)
-    if not win or not win:isStandard() then
-        return
-    end
-
-    local win_id = win:id()
-    local app = win:application()
-    if not app then
-        return
-    end
-
-    local app_name = app:name()
-    local screen = win:screen()
-
-    -- Log initial window position
-    local initial_frame = win:frame()
-    logger.debug("Tiler", "Initial window position: %s at x=%d, y=%d, w=%d, h=%d", app_name, initial_frame.x,
-        initial_frame.y, initial_frame.w, initial_frame.h)
-
-    -- Longer delay for all apps to ensure they're fully initialized
-    local init_delay = 0.3
-
-    -- Even longer delay for known problem apps
-    if tiler._isProblemApp(app_name) then
-        init_delay = 0.5
-        logger.debug("Tiler", "Using longer delay for problem app: %s", app_name)
-    end
-
-    -- Store window reference locally to prevent it from being collected
-    local window_ref = win
-    hs.timer.doAfter(init_delay, function()
-        -- Add nil check before calling isValid()
-        if not window_ref or not window_ref:isValid() then
-            logger.debug("Tiler", "Window is no longer valid")
-            return
-        end
-
-        -- Try to find remembered position for this app on this screen
-        local position_data = state.getWindowMemory(app_name, screen:id())
-
-        if position_data then
-            logger.debug("Tiler", "Found remembered position for %s", app_name)
-
-            -- Apply position based on type (zone or frame)
-            if position_data.zone_id then
-                -- Try to find the zone
-                local target_zone = nil
-
-                -- Find zones on current screen
-                local zones = state.get("zones") or {}
-                for zone_id, zone_data in pairs(zones) do
-                    if zone_data.screen_id == tostring(screen:id()) and
-                        (zone_id == position_data.zone_id or zone_id:match("^" .. position_data.zone_id .. "_")) then
-                        target_zone = Zone.getById(zone_id)
-                        break
-                    end
-                end
-
-                if target_zone then
-                    logger.debug("Tiler", "Adding window to remembered zone: %s, tile: %d", target_zone.id,
-                        position_data.tile_idx or 1)
-
-                    target_zone:addWindow(win_id, {
-                        tile_idx = position_data.tile_idx or 1
-                    })
-
-                    target_zone:resizeWindow(win_id, {
-                        problem_apps = tiler.config.problem_apps
-                    })
-                else
-                    logger.debug("Tiler", "Could not find remembered zone: %s", position_data.zone_id)
-                end
-            elseif position_data.frame then
-                -- Apply exact frame
-                logger.debug("Tiler", "Applying remembered frame position")
-
-                local frame = {
-                    x = position_data.frame.x,
-                    y = position_data.frame.y,
-                    w = position_data.frame.w,
-                    h = position_data.frame.h
-                }
-
-                -- Apply with retry for problem apps
-                utils.applyFrameWithRetry(window_ref, frame, {
-                    max_attempts = 3,
-                    is_problem_app = tiler._isProblemApp(app_name)
-                })
-            end
-        else
-            logger.debug("Tiler", "No remembered position found for %s", app_name)
-
-            -- Use fallback auto-tiling if configured
-            if tiler.config.window_memory and tiler.config.window_memory.auto_tile_fallback then
-                tiler._applyFallbackPosition(window_ref)
-            else
-                -- Try to match to an appropriate zone
-                local match = Zone.findBestZoneForWindow(window_ref)
-
-                if match and match.zone then
-                    logger.debug("Tiler", "Auto-matching window to zone: %s", match.zone.id)
-
-                    match.zone:addWindow(win_id, {
-                        tile_idx = match.tile_idx
-                    })
-
-                    match.zone:resizeWindow(win_id, {
-                        problem_apps = tiler.config.problem_apps
-                    })
-
-                    -- Remember this position for future windows of this app
-                    tiler._rememberWindowPosition(window_ref)
-                end
-            end
-        end
-    end)
-end
 
 --- Apply fallback positioning for a window
 function tiler._applyFallbackPosition(win)
@@ -495,56 +410,6 @@ function tiler._rememberWindowPosition(win)
     end
 end
 
---- Handle window moved event
-function tiler._handleWindowMoved(win)
-    if not win or not win:isStandard() then
-        return
-    end
-
-    local win_id = win:id()
-
-    -- Check if this is a window we're tracking
-    local window_state = state.getWindowState(win_id)
-
-    -- Skip tracking moves for windows that are being positioned by us
-    if window_state and window_state.positioning_timer then
-        local time_diff = os.time() - window_state.positioning_timer
-        if time_diff < 1 then
-            return
-        end
-    end
-
-    -- Debounce window move events
-    tiler._debounceWindowEvent(win, "move", function(w)
-        -- Remember window position after user move
-        tiler._rememberWindowPosition(w)
-    end)
-end
-
---- Handle window resized event
-function tiler._handleWindowResized(win)
-    if not win or not win:isStandard() then
-        return
-    end
-
-    -- Skip tracking resizes for windows that are being positioned by us
-    local win_id = win:id()
-    local window_state = state.getWindowState(win_id)
-
-    if window_state and window_state.positioning_timer then
-        local time_diff = os.time() - window_state.positioning_timer
-        if time_diff < 1 then
-            return
-        end
-    end
-
-    -- Debounce window resize events
-    tiler._debounceWindowEvent(win, "resize", function(w)
-        -- Remember window position after user resize
-        tiler._rememberWindowPosition(w)
-    end)
-end
-
 -- Window event debouncing
 tiler._event_timers = {}
 
@@ -646,51 +511,77 @@ function tiler._initWindowMemory()
 
     -- Setup hotkeys if configured
     if tiler.config.window_memory and tiler.config.window_memory.hotkeys then
+
         -- Hotkey for capturing positions
         if tiler.config.window_memory.hotkeys.capture then
-            -- Debug the values
-            logger.debug("Tiler", "Capture hotkey: mods=%s, key=%s",
-                hs.inspect(tiler.config.window_memory.hotkeys.capture[1]),
-                hs.inspect(tiler.config.window_memory.hotkeys.capture[2]))
+            -- *** FIXES APPLIED HERE ***
+            local key_config = tiler.config.window_memory.hotkeys.capture[1] -- e.g., "9"
+            local mods_config = tiler.config.window_memory.hotkeys.capture[2] -- e.g., HYPER table
 
-            -- Check the types
-            local mods = tiler.config.window_memory.hotkeys.capture[1]
-            local key = tiler.config.window_memory.hotkeys.capture[2]
+            -- Debug the values correctly
+            logger.debug("Tiler", "Capture hotkey config: key=%s, mods=%s", hs.inspect(key_config),
+                hs.inspect(mods_config))
 
-            -- Make sure key is a string
-            if key and type(key) ~= "string" and type(key) ~= "number" then
-                logger.error("Tiler", "Invalid key type for capture hotkey: %s", type(key))
+            -- Validate types correctly
+            if not key_config or (type(key_config) ~= "string" and type(key_config) ~= "number") then
+                logger.error("Tiler", "Invalid key defined for capture hotkey: %s", hs.inspect(key_config))
+                -- Return early if config is invalid
+                return
+            end
+            if not mods_config or type(mods_config) ~= "table" then
+                logger.error("Tiler", "Invalid mods defined for capture hotkey: %s", hs.inspect(mods_config))
+                -- Return early if config is invalid
                 return
             end
 
-            if mods and type(mods) == "table" then
-                hs.hotkey.bind(mods, key, function()
-                    tiler.captureWindowPositions()
-                end)
+            -- Bind using the correctly identified variables
+            hs.hotkey.bind(mods_config, key_config, function()
+                -- Require memory module inside the callback
+                local memory = require("modules.tiler.memory")
+                memory.captureAllPositions()
+                hs.alert.show("Window positions captured", 1) -- Add feedback
+            end)
 
-                logger.debug("Tiler", "Set up capture positions hotkey: %s+%s", table.concat(mods, "+"), key)
-            end
+            logger.debug("Tiler", "Set up capture positions hotkey: %s+%s", table.concat(mods_config, "+"), key_config)
+        else
+            logger.debug("Tiler", "No capture hotkey configured for window memory.")
         end
 
-        -- Same checks for apply hotkey
+        -- Hotkey for applying positions
         if tiler.config.window_memory.hotkeys.apply then
-            local mods = tiler.config.window_memory.hotkeys.apply[1]
-            local key = tiler.config.window_memory.hotkeys.apply[2]
+            -- *** FIXES APPLIED HERE ***
+            local key_config_apply = tiler.config.window_memory.hotkeys.apply[1] -- e.g., "0"
+            local mods_config_apply = tiler.config.window_memory.hotkeys.apply[2] -- e.g., HYPER table
 
-            -- Make sure key is a string
-            if key and type(key) ~= "string" and type(key) ~= "number" then
-                logger.error("Tiler", "Invalid key type for apply hotkey: %s", type(key))
-                return
+            -- Debug the values correctly
+            logger.debug("Tiler", "Apply hotkey config: key=%s, mods=%s", hs.inspect(key_config_apply),
+                hs.inspect(mods_config_apply))
+
+            -- Validate types correctly
+            if not key_config_apply or (type(key_config_apply) ~= "string" and type(key_config_apply) ~= "number") then
+                logger.error("Tiler", "Invalid key defined for apply hotkey: %s", hs.inspect(key_config_apply))
+                return -- Return early if config is invalid
+            end
+            if not mods_config_apply or type(mods_config_apply) ~= "table" then
+                logger.error("Tiler", "Invalid mods defined for apply hotkey: %s", hs.inspect(mods_config_apply))
+                return -- Return early if config is invalid
             end
 
-            if mods and type(mods) == "table" then
-                hs.hotkey.bind(mods, key, function()
-                    tiler.applyWindowPositions()
-                end)
+            -- Bind using the correctly identified variables
+            hs.hotkey.bind(mods_config_apply, key_config_apply, function()
+                -- Require memory module inside the callback
+                local memory = require("modules.tiler.memory")
+                memory.applyAllPositions()
+                hs.alert.show("Window positions applied", 1) -- Add feedback
+            end)
 
-                logger.debug("Tiler", "Set up apply positions hotkey: %s+%s", table.concat(mods, "+"), key)
-            end
+            logger.debug("Tiler", "Set up apply positions hotkey: %s+%s", table.concat(mods_config_apply, "+"),
+                key_config_apply)
+        else
+            logger.debug("Tiler", "No apply hotkey configured for window memory.")
         end
+    else
+        logger.debug("Tiler", "No hotkeys configured for window memory.")
     end
 end
 

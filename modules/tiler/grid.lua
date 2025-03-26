@@ -89,11 +89,11 @@ end
 -- Parses a region like "a1:c3" into start/end coordinates
 function grid.parseRegion(region_str)
     if type(region_str) ~= "string" then
-        logger.error("Grid", "Invalid region: %s", tostring(region_str))
+        logger.error("Grid", "Invalid region type: %s", type(region_str))
         return nil
     end
 
-    -- Handle named positions
+    -- Handle named positions first
     if region_str == "full" then
         return {
             start_col = 1,
@@ -101,35 +101,40 @@ function grid.parseRegion(region_str)
             end_col = -1,
             end_row = -1
         }
-    elseif region_str == "center" then
+    end
+    if region_str == "center" then
         return {
             start_col = 2,
             start_row = 2,
             end_col = -2,
             end_row = -2
         }
-    elseif region_str == "left-half" then
+    end
+    if region_str == "left-half" then
         return {
             start_col = 1,
             start_row = 1,
             end_col = "50%",
             end_row = -1
         }
-    elseif region_str == "right-half" then
+    end
+    if region_str == "right-half" then
         return {
             start_col = "50%",
             start_row = 1,
             end_col = -1,
             end_row = -1
         }
-    elseif region_str == "top-half" then
+    end
+    if region_str == "top-half" then
         return {
             start_col = 1,
             start_row = 1,
             end_col = -1,
             end_row = "50%"
         }
-    elseif region_str == "bottom-half" then
+    end
+    if region_str == "bottom-half" then
         return {
             start_col = 1,
             start_row = "50%",
@@ -138,24 +143,49 @@ function grid.parseRegion(region_str)
         }
     end
 
+    -- Log the input string
+    logger.debug("Grid", "Attempting to parse region_str: '%s'", region_str)
+
     -- Parse region with format "a1:c3" or just "a1" for a single cell
     local start_cell, end_cell = region_str:match("([a-z][0-9]+):?([a-z][0-9]*)")
 
+    -- Log results of the match immediately
+    logger.debug("Grid", "Match result for '%s': start_cell='%s', end_cell='%s'", region_str, tostring(start_cell),
+        tostring(end_cell))
+
     if not start_cell then
-        logger.error("Grid", "Invalid region format: %s", region_str)
+        -- This is the only place the "Invalid region format" error should originate
+        logger.error("Grid", "Invalid region format (start_cell is nil): %s", region_str)
         return nil
     end
 
-    -- If only one cell specified, use it for both start and end
-    end_cell = end_cell or start_cell
+    -- Check if only one cell was specified (end_cell is nil OR empty string from the match)
+    if end_cell == nil or end_cell == "" then
+        logger.debug("Grid", "Detected single cell format for '%s'. Setting end_cell = start_cell.", region_str)
+        end_cell = start_cell
+    else
+        logger.debug("Grid", "Detected multi-cell format for '%s'.", region_str)
+    end
+
+    -- Log the cells we are about to parse coordinates from
+    logger.debug("Grid", "Parsing coordinates for start_cell='%s', end_cell='%s'", start_cell, end_cell)
 
     -- Parse start and end coordinates
     local start_col, start_row = grid.parseCoordinates(start_cell)
     local end_col, end_row = grid.parseCoordinates(end_cell)
 
-    if not start_col or not start_row or not end_col or not end_row then
+    -- Check if coordinate parsing failed
+    if not start_col or not start_row then
+        logger.error("Grid", "Failed to parse coordinates for start_cell '%s'", start_cell)
         return nil
     end
+    if not end_col or not end_row then
+        logger.error("Grid", "Failed to parse coordinates for end_cell '%s'", end_cell)
+        return nil
+    end
+
+    logger.debug("Grid", "Successfully parsed region '%s' to: %d,%d -> %d,%d", region_str, start_col, start_row,
+        end_col, end_row)
 
     return {
         start_col = start_col,

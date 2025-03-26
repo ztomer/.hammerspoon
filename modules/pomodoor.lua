@@ -48,8 +48,7 @@ function pom.init(config)
     }
 
     logger.info("Pomodoro", "Initialized with work period: %s, rest period: %s",
-        utils.formatDuration(pom_config.work_period_sec),
-        utils.formatDuration(pom_config.rest_period_sec))
+        utils.formatDuration(pom_config.work_period_sec), utils.formatDuration(pom_config.rest_period_sec))
 
     return pom
 end
@@ -135,8 +134,8 @@ local function pom_update_display()
     local pom_state = get_pom_state()
     local time_min = math.floor((pom_state.time_left / 60))
     local time_sec = pom_state.time_left - (time_min * 60)
-    local str = string.format("[%s|%02d:%02d|#%02d]",
-        pom_state.curr_active_type, time_min, time_sec, pom_state.work_count)
+    local str = string.format("[%s|%02d:%02d|#%02d]", pom_state.curr_active_type, time_min, time_sec,
+        pom_state.work_count)
 
     if not pom_menu then
         pom_menu = hs.menubar.new()
@@ -295,7 +294,7 @@ function pom.reset_work()
     pom_update_display()
     logger.info("Pomodoro", "Work count reset")
     events.emit("pomodoro.work_reset")
-}
+end
 
 -- Get current state
 function pom.get_state()

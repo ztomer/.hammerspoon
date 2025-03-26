@@ -18,8 +18,7 @@
 
     -- Capture all window positions
     memory.captureAllPositions()
-]]
-local logger = require("core.logger")
+]] local logger = require("core.logger")
 local utils = require("core.utils")
 local state = require("core.state")
 local events = require("core.events")
@@ -377,7 +376,7 @@ function memory._applyFallbackPosition(win)
     if memory.config.app_zones and memory.config.app_zones[app_name] then
         default_zone = memory.config.app_zones[app_name]
         logger.debug("Memory", "Using app-specific default zone: %s", default_zone)
-    }
+    end
 
     -- Emit event to find a zone
     events.emit("memory.zone.find", default_zone, win)

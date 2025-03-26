@@ -25,7 +25,7 @@ local tiler = require("modules.tiler")
 tiler.init(config.tiler)
 
 -- Memory module needs explicit initialization after tiler
-local memory = require("modules.tiler.memory")
+local memory = require("modules.memory.memory")
 memory.init(config.tiler.window_memory)
 
 -- Initialize application switcher with keybindings
@@ -107,30 +107,6 @@ end)
 hs.hotkey.bind(config.keys.mash_shift, "0", function()
     pomodoro.reset_work()
 end)
-
--- Capture all window positions
-if config.tiler.window_memory and config.tiler.window_memory.hotkeys and config.tiler.window_memory.hotkeys.capture then
-    local mods = config.tiler.window_memory.hotkeys.capture[1]
-    local key = config.tiler.window_memory.hotkeys.capture[2]
-
-    hs.hotkey.bind(mods, key, function()
-        local memory = require("modules.tiler.memory")
-        memory.captureAllPositions()
-        hs.alert.show("Window positions captured", 1)
-    end)
-end
-
--- Apply remembered window positions
-if config.tiler.window_memory and config.tiler.window_memory.hotkeys and config.tiler.window_memory.hotkeys.apply then
-    local mods = config.tiler.window_memory.hotkeys.apply[1]
-    local key = config.tiler.window_memory.hotkeys.apply[2]
-
-    hs.hotkey.bind(mods, key, function()
-        local memory = require("modules.tiler.memory")
-        memory.applyAllPositions()
-        hs.alert.show("Window positions applied", 1)
-    end)
-end
 
 -- Load Spoons if configured
 if config.spoons and config.spoons.enabled then
