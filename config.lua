@@ -1,12 +1,30 @@
 -- Configuration file for Hammerspoon settings
 local config = {}
 
+-- Global debug flag
+config.debug = true
+
+-- Logger configuration
+config.logging = {
+    enabled = true,
+    level = "DEBUG", -- DEBUG, INFO, WARN, ERROR
+    show_timestamp = true,
+    file_logging = false,
+    log_path = "~/logs/hammerspoon.log"
+}
+
 -- Key combinations
 config.keys = {
     mash = {"ctrl", "cmd"},
     mash_app = {"shift", "ctrl"},
     mash_shift = {"shift", "ctrl", "cmd"},
     HYPER = {"shift", "ctrl", "alt", "cmd"}
+}
+
+-- Spoon configuration
+config.spoons = {
+    enabled = true,
+    RoundedCorners = true
 }
 
 -- Application switcher settings
@@ -71,12 +89,14 @@ config.tiler = {
     flash_on_focus = true,
     smart_placement = true,
 
+    -- Window margins configuration
     margins = {
         enabled = true,
         size = 5,
         screen_edge = true
     },
 
+    -- Apps that need special positioning handling
     problem_apps = {"Firefox", "Zen"},
 
     -- Screen detection configuration
@@ -145,11 +165,11 @@ config.tiler = {
             cols = 2,
             rows = 2
         },
-        ["portrait"] = {
+        ["1x3"] = {
             cols = 1,
             rows = 3
         },
-        ["portrait_small"] = {
+        ["1x2"] = {
             cols = 1,
             rows = 2
         }
@@ -212,27 +232,72 @@ config.tiler = {
             ["n"] = {"a3", "a2:a3"},
             ["0"] = {"a1:a3", "a2", "a1"}
         },
+
         -- 1x2 layout
         ["1x2"] = {
             ["y"] = {"a1"},
             ["h"] = {"a2"},
             ["0"] = {"a1:a2", "a1", "a2"}
         },
+
         -- Default fallback for any layout/key not specifically defined
         ["default"] = {
             ["default"] = {"full", "center", "left-half", "right-half", "top-half", "bottom-half"}
+        },
+
+        -- Layout hotkeys
+        hotkeys = {
+            save_layout = {"shift", "9"},
+            next_layout = {"shift", "="},
+            prev_layout = {"shift", "-"},
+            layouts = {
+                ["coding"] = {"shift", "1"},
+                ["browsing"] = {"shift", "2"},
+                ["presentation"] = {"shift", "3"}
+            }
+        },
+
+        -- Custom layouts that can be applied
+        custom_layouts = {
+            ["coding"] = {
+                description = "Coding layout with editor and terminal",
+                zones = {
+                    ["main"] = {
+                        screen = "primary",
+                        tiles = {"full", "left-half", "right-half"}
+                    }
+                }
+            },
+            ["browsing"] = {
+                description = "Web browsing layout",
+                zones = {
+                    ["browser"] = {
+                        screen = "primary",
+                        tiles = {"full", "left-half"}
+                    }
+                }
+            }
+        },
+
+        -- Default screen layouts
+        default_screen_layouts = {
+            ["DELL U3223QE"] = "coding",
+            ["Built-in"] = "browsing"
         }
     },
+
+    -- Window memory settings
     window_memory = {
         enabled = true, -- Enable/disable window memory
         debug = true, -- Enable debug logging
 
         -- Directory to store position cache files
         cache_dir = os.getenv("HOME") .. "/.config/tiler",
+
         -- Hotkey configuration
         hotkeys = {
-            capture = {"9", HYPER}, -- HYPER+9 to capture all window positions
-            apply = {"0", HYPER} -- HYPER+0 to apply remembered positions
+            capture = {"9", config.keys.HYPER}, -- HYPER+9 to capture all window positions
+            apply = {"0", config.keys.HYPER} -- HYPER+0 to apply remembered positions
         },
 
         -- Apps to exclude from window memory
@@ -249,7 +314,23 @@ config.tiler = {
             ["Notion"] = "j",
             ["Spotify"] = "i"
         }
-    }
+    },
 
+    -- Event handlers
+    event_handlers = {
+        -- Define custom event handlers
+        ["window.created"] = function(win)
+            -- Custom logic for window creation
+        end,
+
+        ["pomodoro.work_completed"] = function(state)
+            -- Custom notification or action when a work period completes
+            hs.notify.new({
+                title = "Pomodoro",
+                informativeText = "Work period completed!"
+            }):send()
+        end
+    }
 }
+
 return config

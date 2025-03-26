@@ -1,0 +1,54 @@
+flowchart TD
+    subgraph Initialization
+        init[init.lua] --> config[config.lua]
+        init --> logger[logger.lua]
+        init --> events[events.lua]
+        init --> state[state.lua]
+        init --> tiler[tiler/init.lua]
+        init --> appSwitcher[app_switcher.lua]
+        init --> pomodoro[pomodoor.lua]
+    end
+
+    subgraph "Core Modules"
+        logger --> |log messages| null1((System))
+        events --> |publish/subscribe| eventHandlers(Event Handlers)
+        state --> |store/retrieve| stateStore[(State Store)]
+        utils[utils.lua] --> |utility functions| null2((Used by all))
+    end
+
+    subgraph "Tiler Components"
+        tiler --> grid[grid.lua]
+        tiler --> Tile[tile.lua]
+        tiler --> Zone[zone.lua]
+        tiler --> Layout[layout.lua]
+        tiler --> memory[memory.lua]
+        Zone --> Tile
+        Layout --> Zone
+        Layout --> grid
+        memory --> Zone
+        memory --> state
+    end
+
+    subgraph "Event Flow"
+        user((User)) --> |keyboard input| hotkeys{Hotkeys}
+        hotkeys --> tiler
+        hotkeys --> appSwitcher
+        hotkeys --> pomodoro
+        system((System)) --> |screen change| screenWatcher{Screen Watcher}
+        screenWatcher --> events
+        events --> tiler
+        window((Window)) --> |create/move/resize| windowWatcher{Window Watcher}
+        windowWatcher --> events
+        events --> memory
+        memory --> Zone
+    end
+
+    classDef core fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef tiler fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef flow fill:#bfb,stroke:#333,stroke-width:2px;
+    classDef init fill:#fbb,stroke:#333,stroke-width:2px;
+
+    class logger,events,state,utils core;
+    class tiler,grid,Tile,Zone,Layout,memory tiler;
+    class user,hotkeys,system,screenWatcher,window,windowWatcher,eventHandlers flow;
+    class init,config,appSwitcher,pomodoro init;
