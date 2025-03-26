@@ -83,9 +83,6 @@ function tiler.init(config)
     -- Initialize layout system
     Layout.init(config)
 
-    -- Setup event watchers
-    tiler._initEventWatchers()
-
     -- Setup screen watchers
     tiler._initScreenWatchers()
 
@@ -105,6 +102,9 @@ function tiler.init(config)
         Zone.mapExistingWindows()
     end)
 
+    -- Initialize event watchers last to ensure all extensions are loaded
+    tiler._initEventWatchers()
+
     logger.info("Tiler", "Initialization complete")
 
     return tiler
@@ -119,22 +119,21 @@ function tiler._initEventWatchers()
     tiler._window_watcher:setDefaultFilter({})
     tiler._window_watcher:setSortOrder(hs.window.filter.sortByFocusedLast)
 
-    -- Subscribe to window events (using proper constants from hs.window.filter)
-    tiler._window_watcher:subscribe(hs.window.filter.windowDestroyed, function(win)
-        tiler._handleWindowDestroyed(win)
-    end)
-
-    tiler._window_watcher:subscribe(hs.window.filter.windowCreated, function(win)
-        tiler._handleWindowCreated(win)
-    end)
-
-    tiler._window_watcher:subscribe(hs.window.filter.windowMoved, function(win)
-        tiler._handleWindowMoved(win)
-    end)
-
-    tiler._window_watcher:subscribe(hs.window.filter.windowResized, function(win)
-        tiler._handleWindowResized(win)
-    end)
+    -- Subscribe to window events using a map (recommended approach)
+    tiler._window_watcher:subscribe({
+        windowDestroyed = function(win)
+            tiler._handleWindowDestroyed(win)
+        end,
+        windowCreated = function(win)
+            tiler._handleWindowCreated(win)
+        end,
+        windowMoved = function(win)
+            tiler._handleWindowMoved(win)
+        end,
+        windowResized = function(win)
+            tiler._handleWindowResized(win)
+        end
+    })
 
     -- Set up memory-related event handlers
     events.on("memory.zone.lookup", function(zone_id, win)
@@ -649,26 +648,48 @@ function tiler._initWindowMemory()
     if tiler.config.window_memory and tiler.config.window_memory.hotkeys then
         -- Hotkey for capturing positions
         if tiler.config.window_memory.hotkeys.capture then
+            -- Debug the values
+            logger.debug("Tiler", "Capture hotkey: mods=%s, key=%s",
+                hs.inspect(tiler.config.window_memory.hotkeys.capture[1]),
+                hs.inspect(tiler.config.window_memory.hotkeys.capture[2]))
+
+            -- Check the types
             local mods = tiler.config.window_memory.hotkeys.capture[1]
             local key = tiler.config.window_memory.hotkeys.capture[2]
 
-            hs.hotkey.bind(mods, key, function()
-                tiler.captureWindowPositions()
-            end)
+            -- Make sure key is a string
+            if key and type(key) ~= "string" and type(key) ~= "number" then
+                logger.error("Tiler", "Invalid key type for capture hotkey: %s", type(key))
+                return
+            end
 
-            logger.debug("Tiler", "Set up capture positions hotkey: %s+%s", table.concat(mods, "+"), key)
+            if mods and type(mods) == "table" then
+                hs.hotkey.bind(mods, key, function()
+                    tiler.captureWindowPositions()
+                end)
+
+                logger.debug("Tiler", "Set up capture positions hotkey: %s+%s", table.concat(mods, "+"), key)
+            end
         end
 
-        -- Hotkey for applying positions
+        -- Same checks for apply hotkey
         if tiler.config.window_memory.hotkeys.apply then
             local mods = tiler.config.window_memory.hotkeys.apply[1]
             local key = tiler.config.window_memory.hotkeys.apply[2]
 
-            hs.hotkey.bind(mods, key, function()
-                tiler.applyWindowPositions()
-            end)
+            -- Make sure key is a string
+            if key and type(key) ~= "string" and type(key) ~= "number" then
+                logger.error("Tiler", "Invalid key type for apply hotkey: %s", type(key))
+                return
+            end
 
-            logger.debug("Tiler", "Set up apply positions hotkey: %s+%s", table.concat(mods, "+"), key)
+            if mods and type(mods) == "table" then
+                hs.hotkey.bind(mods, key, function()
+                    tiler.applyWindowPositions()
+                end)
+
+                logger.debug("Tiler", "Set up apply positions hotkey: %s+%s", table.concat(mods, "+"), key)
+            end
         end
     end
 end
