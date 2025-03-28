@@ -306,9 +306,30 @@ end
 -- Window Manipulation Functions
 ------------------------------------------
 
--- Apply a frame to a window with proper handling
+-- Apply a frame to a window with proper handling (enhanced to handle invalid frames)
 function window_utils.apply_frame(window, frame, force_screen)
     if not window or not window:isStandard() then
+        return false
+    end
+
+    -- Validate frame parameters
+    if not frame or type(frame.x) ~= "number" or type(frame.y) ~= "number" or type(frame.w) ~= "number" and
+        type(frame.width) ~= "number" or type(frame.h) ~= "number" and type(frame.height) ~= "number" then
+        debug_log("Invalid frame parameters:", frame)
+        return false
+    end
+
+    -- Normalize frame format
+    local valid_frame = {
+        x = frame.x,
+        y = frame.y,
+        w = frame.w or frame.width,
+        h = frame.h or frame.height
+    }
+
+    -- Ensure all frame values are present and positive
+    if valid_frame.w <= 0 or valid_frame.h <= 0 then
+        debug_log("Invalid frame dimensions:", valid_frame)
         return false
     end
 
@@ -320,26 +341,10 @@ function window_utils.apply_frame(window, frame, force_screen)
     -- Apply frame with animation disabled
     local saved_duration = hs.window.animationDuration
     hs.window.animationDuration = 0
-    window:setFrame(frame)
+    window:setFrame(valid_frame)
     hs.window.animationDuration = saved_duration
 
     return true
-end
-
--- Check if an app is in the problem list
-function window_utils.is_problem_app(app_name)
-    if not settings.problem_apps or not app_name then
-        return false
-    end
-
-    local lower_app_name = app_name:lower()
-    for _, name in ipairs(settings.problem_apps) do
-        if name:lower() == lower_app_name then
-            return true
-        end
-    end
-
-    return false
 end
 
 -- Special handling for problem apps
@@ -2746,7 +2751,10 @@ tiler.layout_utils = {
 tiler.smart_placement = {
     place_window = smart_placement.place_window
 }
-tiler.zone_resize_window = zone_resize_window
+
+tiler.zone_resize_window = function(zone, window_id)
+    return zone_resize_window(zone, window_id)
+end
 
 -- Return the tiler object for configuration
 return tiler
