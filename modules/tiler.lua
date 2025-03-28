@@ -305,6 +305,21 @@ end
 ------------------------------------------
 -- Window Manipulation Functions
 ------------------------------------------
+-- Check if an app is in the problem list
+function window_utils.is_problem_app(app_name)
+    if not settings.problem_apps or not app_name then
+        return false
+    end
+
+    local lower_app_name = app_name:lower()
+    for _, name in ipairs(settings.problem_apps) do
+        if name:lower() == lower_app_name then
+            return true
+        end
+    end
+
+    return false
+end
 
 -- Apply a frame to a window with proper handling (enhanced to handle invalid frames)
 function window_utils.apply_frame(window, frame, force_screen)
@@ -1335,19 +1350,6 @@ local function zone_rotate_tile(zone, window_id)
     return next_idx
 end
 
--- Get the current tile for a window
-local function zone_get_current_tile(zone, window_id)
-    if not zone or not window_id then
-        return nil
-    end
-
-    local tile_idx = zone.window_to_tile_idx[window_id]
-    if not tile_idx then
-        return nil
-    end
-    return zone.tiles[tile_idx]
-end
-
 -- Add a window to a zone
 local function zone_add_window(zone, window_id)
     if not zone or not window_id then
@@ -1380,6 +1382,7 @@ local function zone_add_window(zone, window_id)
     return true
 end
 
+-- Resize a window to match the current tile
 -- Resize a window to match the current tile
 local function zone_resize_window(zone, window_id)
     if not zone or not window_id then
@@ -2752,9 +2755,7 @@ tiler.smart_placement = {
     place_window = smart_placement.place_window
 }
 
-tiler.zone_resize_window = function(zone, window_id)
-    return zone_resize_window(zone, window_id)
-end
+tiler.zone_resize_window = zone_resize_window
 
 -- Return the tiler object for configuration
 return tiler
