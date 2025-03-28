@@ -5,6 +5,8 @@ Zone Tiler for Hammerspoon
 A window management system that allows defining zones on the screen and cycling window sizes within those zones.
 ]] -- Load configuration from config file
 local config = require "config"
+-- Load LRU cache utility
+local lru_cache = require "modules.lru_cache"
 
 -- Define the tiler namespace for public API only
 local tiler = {
@@ -36,6 +38,17 @@ local tiler = {
     zone_configs = {}
 }
 
+-- Create caches for different functions
+local cache = {
+    -- For expensive layout calculations
+    tile_positions = lru_cache.new(500), -- Cache for tile position calculations
+    zone_tiles = lru_cache.new(200), -- Cache for zone tile configurations
+    screen_modes = lru_cache.new(50), -- Cache for screen mode detection
+
+    -- For window state (no eviction limit needed as we'll manage this explicitly)
+    window_positions = lru_cache.new(1000) -- Plenty of room for window state
+}
+
 -- Create local tables for organizing related functions
 local rect = {}
 local grid_coords = {}
@@ -52,6 +65,20 @@ local settings = {}
 local function debug_log(...)
     if settings.debug then
         print("[TilerDebug]", ...)
+    end
+end
+
+-- Add debugging for cache performance
+local function log_cache_stats()
+    if not settings.debug then
+        return
+    end
+
+    debug_log("Cache statistics:")
+    for name, c in pairs(cache) do
+        local stats = c:stats()
+        debug_log(string.format("  %s: %d/%d items, %.1f%% hit rate (%d hits, %d misses)", name, stats.size,
+            stats.max_size, stats.hit_ratio * 100, stats.hits, stats.misses))
     end
 end
 
@@ -173,12 +200,12 @@ function window_state.associate_window_with_zone(window_id, zone, tile_idx)
     -- Update state tracking
     tiler._window_id2zone_id[window_id] = zone.id
 
-    if not window_state._data[window_id] then
-        window_state._data[window_id] = {}
-    end
-
-    window_state._data[window_id].zone_id = zone.id
-    window_state._data[window_id].tile_idx = tile_idx
+    -- Store state in the cache
+    local state = {
+        zone_id = zone.id,
+        tile_idx = tile_idx
+    }
+    cache.window_positions:set(window_id, state)
 
     -- Update zone's tracking
     zone.window_to_tile_idx[window_id] = tile_idx
@@ -205,6 +232,9 @@ end
 
 -- Remove a window from all zones
 function window_state.remove_window_from_all_zones(window_id)
+    -- Remove from cache
+    cache.window_positions:remove(window_id)
+
     for zone_id, zone in pairs(tiler._zone_id2zone) do
         if zone.window_to_tile_idx and zone.window_to_tile_idx[window_id] ~= nil then
             zone.window_to_tile_idx[window_id] = nil
@@ -234,9 +264,10 @@ end
 
 -- Get the zone for a window
 function window_state.get_window_zone(window_id)
-    if window_state._data[window_id] and window_state._data[window_id].zone_id then
-        local zone_id = window_state._data[window_id].zone_id
-        return tiler._zone_id2zone[zone_id], zone_id
+    -- Check the cache first
+    local state = cache.window_positions:get(window_id)
+    if state and state.zone_id then
+        return tiler._zone_id2zone[state.zone_id], state.zone_id
     end
 
     -- Fallback to old tracking method
@@ -595,6 +626,20 @@ end
 
 -- Calculate tile position from grid coordinates
 function layout_utils.calculate_tile_position(screen, col_start, row_start, col_end, row_end, rows, cols)
+    -- Create a cache key
+    local cache_key = lru_cache.key_maker(screen:id(), -- Screen ID
+    col_start, row_start, -- Start position
+    col_end, row_end, -- End position
+    rows, cols, -- Grid dimensions
+    settings.margins -- Margin settings (as they affect calculation)
+    )
+
+    -- Check cache first
+    local cached_result = cache.tile_positions:get(cache_key)
+    if cached_result then
+        return cached_result
+    end
+
     local frame = screen:frame()
     local w = frame.w
     local h = frame.h
@@ -690,15 +735,20 @@ function layout_utils.calculate_tile_position(screen, col_start, row_start, col_
             tile_height))
     end
 
-    return {
+    -- Create the result
+    local result = {
         x = tile_x,
         y = tile_y,
         width = tile_width,
         height = tile_height
     }
+
+    -- Cache the result
+    cache.tile_positions:set(cache_key, result)
+
+    return result
 end
 
--- Create a tile based on grid coordinates
 -- Create a tile based on grid coordinates
 function layout_utils.create_tile_from_grid_coords(screen, coord_string, rows, cols)
     -- Get the screen's absolute frame
@@ -801,6 +851,18 @@ end
 
 -- Get all tiles for a zone configuration
 function layout_utils.get_zone_tiles(screen, zone_key, rows, cols)
+    -- Create a cache key
+    local cache_key = lru_cache.key_maker(screen:id(), -- Screen ID
+    zone_key, -- Zone key
+    rows, cols -- Grid dimensions
+    )
+
+    -- Check cache first
+    local cached_result = cache.zone_tiles:get(cache_key)
+    if cached_result then
+        return cached_result
+    end
+
     local screen_name = screen:name()
     local layout_type = nil
 
@@ -882,98 +944,25 @@ function layout_utils.get_zone_tiles(screen, zone_key, rows, cols)
         end
     end
 
-    return tiles
-end
-
--- Get all tiles for a zone configuration
-function layout_utils.get_zone_tiles(screen, zone_key, rows, cols)
-    local screen_name = screen:name()
-    local layout_type = nil
-
-    debug_log(
-        "get_zone_tiles for screen: " .. screen_name .. ", key: " .. zone_key .. ", rows: " .. rows .. ", cols: " ..
-            cols)
-
-    -- 1. Check for custom screens - exact match by name
-    if config.tiler.custom_screens and config.tiler.custom_screens[screen_name] then
-        layout_type = config.tiler.custom_screens[screen_name].layout
-        debug_log("Using custom screen layout: " .. layout_type)
-
-        -- 2. Check for pattern matches in screen names
-    elseif config.tiler.screen_detection and config.tiler.screen_detection.patterns then
-        for pattern, layout in pairs(config.tiler.screen_detection.patterns) do
-            if screen_name:match(pattern) then
-                layout_type = layout
-                debug_log("Matched screen pattern: " .. pattern .. " using layout: " .. layout_type)
-                break
-            end
-        end
-    end
-
-    -- 3. If no match by screen name/pattern, attempt to match by grid dimensions
-    if not layout_type then
-        -- Look through all grid definitions to find a match
-        if config.tiler.grids then
-            for lt, grid in pairs(config.tiler.grids) do
-                if grid.cols == cols and grid.rows == rows then
-                    layout_type = lt
-                    debug_log("Matched grid dimensions " .. cols .. "x" .. rows .. " to layout: " .. layout_type)
-                    break
-                end
-            end
-        end
-    end
-
-    -- 4. If still no match, default to the string representation
-    if not layout_type then
-        layout_type = cols .. "x" .. rows
-        debug_log("No layout match found, using dimensional name: " .. layout_type)
-    end
-
-    -- Get zone configuration for this layout and key
-    local config_entry = nil
-
-    -- First try exact layout and key match
-    if config.tiler.layouts and config.tiler.layouts[layout_type] and config.tiler.layouts[layout_type][zone_key] then
-        config_entry = config.tiler.layouts[layout_type][zone_key]
-        debug_log("Using " .. layout_type .. " layout for zone key: " .. zone_key)
-
-        -- Try default layout for this key
-    elseif config.tiler.layouts and config.tiler.layouts["default"] and config.tiler.layouts["default"][zone_key] then
-        config_entry = config.tiler.layouts["default"][zone_key]
-        debug_log("Using default layout for zone key: " .. zone_key)
-
-        -- Last resort - general default
-    elseif config.tiler.layouts and config.tiler.layouts["default"] and config.tiler.layouts["default"]["default"] then
-        config_entry = config.tiler.layouts["default"]["default"]
-        debug_log("Using default fallback for zone key: " .. zone_key)
-    else
-        -- If all else fails, provide a sensible default
-        config_entry = {"full", "center"}
-        debug_log("No configuration found, using hardcoded default for zone key: " .. zone_key)
-    end
-
-    -- If the config is an empty table, return empty tiles
-    if config_entry and #config_entry == 0 then
-        debug_log("Zone " .. zone_key .. " disabled for layout " .. layout_type)
-        return {}
-    end
-
-    -- Process the tiles
-    local tiles = {}
-    for _, coords in ipairs(config_entry) do
-        local tile = layout_utils.create_tile_from_grid_coords(screen, coords, rows, cols)
-        if tile then
-            table.insert(tiles, tile)
-        end
-    end
+    -- Cache the result
+    cache.zone_tiles:set(cache_key, tiles)
 
     return tiles
 end
 
 -- Determine which layout mode to use based on screen properties
 function layout_utils.get_mode_for_screen(screen)
+    -- Create a cache key - screen properties that affect the decision
     local screen_frame = screen:frame()
+    local cache_key = lru_cache.key_maker(screen:name(), screen_frame.w, screen_frame.h)
+
+    -- Check cache first
+    local cached_result = cache.screen_modes:get(cache_key)
+    if cached_result then
+        return cached_result
+    end
+
+    -- Original code to determine layout
     local width = screen_frame.w
     local height = screen_frame.h
     local is_portrait = height > width
@@ -982,101 +971,117 @@ function layout_utils.get_mode_for_screen(screen)
     debug_log(string.format("Screen dimensions: %.1f x %.1f", width, height))
     debug_log("Screen name: " .. screen_name)
 
+    local result = nil
+
     -- 1. Check for custom screen layout (exact match)
     if config.tiler.custom_screens[screen_name] then
         debug_log("Using custom layout for screen: " .. screen_name)
-        return config.tiler.custom_screens[screen_name].grid
+        result = config.tiler.custom_screens[screen_name].grid
     end
 
-    -- 2. Check for pattern match in screen name
-    for pattern, layout_type in pairs(config.tiler.screen_detection.patterns) do
-        if screen_name:match(pattern) then
-            debug_log("Matched screen pattern: " .. pattern .. " - using layout: " .. layout_type)
-            if config.tiler.grids[layout_type] then
-                return config.tiler.grids[layout_type]
+    if not result then
+        -- 2. Check for pattern match in screen name
+        for pattern, layout_type in pairs(config.tiler.screen_detection.patterns) do
+            if screen_name:match(pattern) then
+                debug_log("Matched screen pattern: " .. pattern .. " - using layout: " .. layout_type)
+                if config.tiler.grids[layout_type] then
+                    result = config.tiler.grids[layout_type]
+                    break
+                end
             end
         end
     end
 
-    -- 3. Try to extract screen size from name
-    local size_pattern = "(%d+)[%s%-]?inch"
-    local size_match = screen_name:match(size_pattern)
+    if not result then
+        -- 3. Try to extract screen size from name
+        local size_pattern = "(%d+)[%s%-]?inch"
+        local size_match = screen_name:match(size_pattern)
 
-    if size_match then
-        local screen_size = tonumber(size_match)
-        debug_log("Extracted screen size from name: " .. screen_size .. " inches")
+        if size_match then
+            local screen_size = tonumber(size_match)
+            debug_log("Extracted screen size from name: " .. screen_size .. " inches")
 
+            if is_portrait then
+                -- Portrait mode layouts
+                for _, size_config in pairs(config.tiler.screen_detection.portrait) do
+                    local matches = false
+                    if size_config.min and size_config.max then
+                        matches = screen_size >= size_config.min and screen_size <= size_config.max
+                    elseif size_config.min then
+                        matches = screen_size >= size_config.min
+                    elseif size_config.max then
+                        matches = screen_size <= size_config.max
+                    end
+
+                    if matches and config.tiler.grids[size_config.layout] then
+                        debug_log("Using portrait layout: " .. size_config.layout)
+                        result = config.tiler.grids[size_config.layout]
+                        break
+                    end
+                end
+            else
+                -- Landscape mode layouts based on size
+                for _, size_config in pairs(config.tiler.screen_detection.sizes) do
+                    local matches = false
+                    if size_config.min and size_config.max then
+                        matches = screen_size >= size_config.min and screen_size <= size_config.max
+                    elseif size_config.min then
+                        matches = screen_size >= size_config.min
+                    elseif size_config.max then
+                        matches = screen_size <= size_config.max
+                    end
+
+                    if matches and config.tiler.grids[size_config.layout] then
+                        debug_log("Using size-based layout: " .. size_config.layout)
+                        result = config.tiler.grids[size_config.layout]
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if not result then
+        -- 4. Resolution-based fallback
         if is_portrait then
-            -- Portrait mode layouts
-            for _, size_config in pairs(config.tiler.screen_detection.portrait) do
-                local matches = false
-                if size_config.min and size_config.max then
-                    matches = screen_size >= size_config.min and screen_size <= size_config.max
-                elseif size_config.min then
-                    matches = screen_size >= size_config.min
-                elseif size_config.max then
-                    matches = screen_size <= size_config.max
-                end
-
-                if matches and config.tiler.grids[size_config.layout] then
-                    debug_log("Using portrait layout: " .. size_config.layout)
-                    return config.tiler.grids[size_config.layout]
-                end
+            if width >= 1440 or height >= 2560 then
+                debug_log("High-resolution portrait screen - using 1x3 layout")
+                result = config.tiler.grids["1x3"]
+            else
+                debug_log("Standard portrait screen - using 1x2 layout")
+                result = config.tiler.grids["1x2"]
             end
         else
-            -- Landscape mode layouts based on size
-            for _, size_config in pairs(config.tiler.screen_detection.sizes) do
-                local matches = false
-                if size_config.min and size_config.max then
-                    matches = screen_size >= size_config.min and screen_size <= size_config.max
-                elseif size_config.min then
-                    matches = screen_size >= size_config.min
-                elseif size_config.max then
-                    matches = screen_size <= size_config.max
-                end
+            -- Landscape orientation
+            local aspect_ratio = width / height
+            local is_ultrawide = aspect_ratio > 2.0
 
-                if matches and config.tiler.grids[size_config.layout] then
-                    debug_log("Using size-based layout: " .. size_config.layout)
-                    return config.tiler.grids[size_config.layout]
-                end
+            if width >= 3840 or height >= 2160 then
+                debug_log("Detected 4K or higher resolution - using 4x3 layout")
+                result = config.tiler.grids["4x3"]
+            elseif width >= 3440 or is_ultrawide then
+                debug_log("Detected ultrawide monitor - using 4x2 layout")
+                result = {
+                    cols = 4,
+                    rows = 2
+                }
+            elseif width >= 2560 or height >= 1440 then
+                debug_log("Detected 1440p resolution - using 3x3 layout")
+                result = config.tiler.grids["3x3"]
+            elseif width >= 1920 or height >= 1080 then
+                debug_log("Detected 1080p resolution - using 3x2 layout")
+                result = config.tiler.grids["3x2"]
+            else
+                debug_log("Detected smaller resolution - using 2x2 layout")
+                result = config.tiler.grids["2x2"]
             end
         end
     end
 
-    -- 4. Resolution-based fallback
-    if is_portrait then
-        if width >= 1440 or height >= 2560 then
-            debug_log("High-resolution portrait screen - using 1x3 layout")
-            return config.tiler.grids["1x3"]
-        else
-            debug_log("Standard portrait screen - using 1x2 layout")
-            return config.tiler.grids["1x2"]
-        end
-    else
-        -- Landscape orientation
-        local aspect_ratio = width / height
-        local is_ultrawide = aspect_ratio > 2.0
+    -- Cache the result
+    cache.screen_modes:set(cache_key, result)
 
-        if width >= 3840 or height >= 2160 then
-            debug_log("Detected 4K or higher resolution - using 4x3 layout")
-            return config.tiler.grids["4x3"]
-        elseif width >= 3440 or is_ultrawide then
-            debug_log("Detected ultrawide monitor - using 4x2 layout")
-            return {
-                cols = 4,
-                rows = 2
-            }
-        elseif width >= 2560 or height >= 1440 then
-            debug_log("Detected 1440p resolution - using 3x3 layout")
-            return config.tiler.grids["3x3"]
-        elseif width >= 1920 or height >= 1080 then
-            debug_log("Detected 1080p resolution - using 3x2 layout")
-            return config.tiler.grids["3x2"]
-        else
-            debug_log("Detected smaller resolution - using 2x2 layout")
-            return config.tiler.grids["2x2"]
-        end
-    end
+    return result
 end
 
 ------------------------------------------
@@ -2236,12 +2241,14 @@ function tiler.set_config()
     -- Load from config.lua
     settings = {
         debug = config.tiler.debug,
+        debug_cache_stats = config.tiler.debug_cache_stats or false,
         modifier = config.tiler.modifier,
         focus_modifier = config.tiler.focus_modifier,
         flash_on_focus = config.tiler.flash_on_focus,
         smart_placement = config.tiler.smart_placement,
         margins = config.tiler.margins,
-        problem_apps = config.tiler.problem_apps
+        problem_apps = config.tiler.problem_apps,
+        cache = config.tiler.cache or {} -- Cache settings
     }
 
     -- Use custom layouts from config
@@ -2250,6 +2257,11 @@ function tiler.set_config()
         for screen_name, layout in pairs(config.tiler.custom_screens) do
             tiler.layouts.custom[screen_name] = layout.grid
         end
+    end
+
+    -- Configure cache sizes if specified in settings
+    if settings.cache then
+        tiler.configure_cache(settings.cache)
     end
 
     debug_log("Configuration loaded from config.lua")
@@ -2407,6 +2419,55 @@ function tiler.check_window_creation_handler()
     return has_creation_handler
 end
 
+-- Add cache management functions to the tiler module
+function tiler.reset_cache_stats()
+    for _, c in pairs(cache) do
+        c:reset_stats()
+    end
+    debug_log("Cache statistics reset")
+end
+
+function tiler.get_cache_stats()
+    local stats = {}
+    for name, c in pairs(cache) do
+        stats[name] = c:stats()
+    end
+    return stats
+end
+
+-- Display cache statistics for debugging
+function tiler.show_cache_stats()
+    log_cache_stats()
+    return tiler.get_cache_stats()
+end
+
+-- Configure cache sizes
+function tiler.configure_cache(cache_settings)
+    for name, size in pairs(cache_settings) do
+        if cache[name] then
+            -- Create a new cache with the specified size
+            local old_cache = cache[name]
+            cache[name] = lru_cache.new(size)
+
+            -- Copy over necessary statistics
+            cache[name]._hits = old_cache._hits
+            cache[name]._misses = old_cache._misses
+
+            debug_log("Resized cache:", name, "to", size, "items")
+        end
+    end
+    return tiler
+end
+
+-- For debugging: periodically log cache stats
+local function setup_cache_monitoring()
+    if settings.debug_cache_stats then
+        hs.timer.doEvery(300, function() -- Every 5 minutes
+            log_cache_stats()
+        end)
+    end
+end
+
 -- Main startup function
 function tiler.start()
     debug_log("Starting Tiler v" .. tiler._version)
@@ -2461,6 +2522,9 @@ function tiler.start()
     if config.window_memory and config.window_memory.enabled ~= false then
         tiler.init_window_memory()
     end
+
+    -- Set up cache monitoring for debug purposes
+    setup_cache_monitoring()
 
     debug_log("Tiler initialization complete")
 

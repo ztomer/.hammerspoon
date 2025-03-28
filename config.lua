@@ -66,10 +66,19 @@ config.pomodoro = {
 -- Tiler settings
 config.tiler = {
     debug = true,
+    debug_cache_stats = true, -- Enable periodic logging of cache statistics
     modifier = {"ctrl", "cmd"},
     focus_modifier = {"shift", "ctrl", "cmd"},
     flash_on_focus = true,
     smart_placement = true,
+
+    -- Cache settings
+    cache = {
+        tile_positions = 500, -- Size of tile position cache
+        zone_tiles = 200, -- Size of zone tiles cache
+        screen_modes = 50, -- Size of screen mode detection cache
+        window_positions = 1000 -- Size of window position cache
+    },
 
     margins = {
         enabled = true,
@@ -145,11 +154,11 @@ config.tiler = {
             cols = 2,
             rows = 2
         },
-        ["portrait"] = {
+        ["1x3"] = {
             cols = 1,
             rows = 3
         },
-        ["portrait_small"] = {
+        ["1x2"] = {
             cols = 1,
             rows = 2
         }
@@ -222,34 +231,36 @@ config.tiler = {
         ["default"] = {
             ["default"] = {"full", "center", "left-half", "right-half", "top-half", "bottom-half"}
         }
-    },
-    window_memory = {
-        enabled = true, -- Enable/disable window memory
-        debug = true, -- Enable debug logging
-
-        -- Directory to store position cache files
-        cache_dir = os.getenv("HOME") .. "/.config/tiler",
-        -- Hotkey configuration
-        hotkeys = {
-            capture = {"9", HYPER}, -- HYPER+9 to capture all window positions
-            apply = {"0", HYPER} -- HYPER+0 to apply remembered positions
-        },
-
-        -- Apps to exclude from window memory
-        excluded_apps = {"System Settings", "System Preferences", "Activity Monitor", "Calculator", "Photo Booth",
-                         "Hammerspoon", "KeyCastr", "Installer"},
-
-        -- Fallback auto-tiling settings (used when no cached position exists)
-        auto_tile_fallback = true,
-        default_zone = "center",
-        app_zones = {
-            ["Arc"] = "k",
-            ["iTerm"] = "h",
-            ["Visual Studio Code"] = "h",
-            ["Notion"] = "j",
-            ["Spotify"] = "i"
-        }
     }
-
 }
+
+-- Window memory settings
+config.window_memory = {
+    enabled = true, -- Enable/disable window memory
+    debug = true, -- Enable debug logging
+
+    -- Directory to store position cache files
+    cache_dir = os.getenv("HOME") .. "/.config/tiler",
+    -- Hotkey configuration
+    hotkeys = {
+        capture = {"9", config.keys.HYPER}, -- HYPER+9 to capture all window positions
+        apply = {"0", config.keys.HYPER} -- HYPER+0 to apply remembered positions
+    },
+
+    -- Apps to exclude from window memory
+    excluded_apps = {"System Settings", "System Preferences", "Activity Monitor", "Calculator", "Photo Booth",
+                     "Hammerspoon", "KeyCastr", "Installer"},
+
+    -- Fallback auto-tiling settings (used when no cached position exists)
+    auto_tile_fallback = true,
+    default_zone = "center",
+    app_zones = {
+        ["Arc"] = "k",
+        ["iTerm"] = "h",
+        ["Visual Studio Code"] = "h",
+        ["Notion"] = "j",
+        ["Spotify"] = "i"
+    }
+}
+
 return config

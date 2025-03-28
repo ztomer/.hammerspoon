@@ -27,6 +27,90 @@ local function enhanced_debug_log(...)
     end
 end
 
+-- Helper function to check if a window reference is valid
+local function isValid(win)
+    if not win then
+        return false
+    end
+
+    -- Use pcall to safely check if basic window properties can be accessed
+    local success = pcall(function()
+        return win:id()
+    end)
+    if not success then
+        return false
+    end
+
+    -- Additional check: windows should have an application
+    local app = win:application()
+    if not app then
+        return false
+    end
+
+    return true
+end
+
+-- Wrapper functions to bridge API gap between window_memory and tiler
+local function add_window_to_zone(zone, win_id)
+    -- Use the appropriate function from tiler if available
+    if tiler and tiler.window_state and tiler.window_state.associate_window_with_zone then
+        tiler.window_state.associate_window_with_zone(win_id, zone, 0)
+    else
+        -- Fallback if we can't access the window_state function
+        if zone.window_to_tile_idx then
+            zone.window_to_tile_idx[win_id] = 0
+        end
+
+        -- Update global tracking
+        if tiler and tiler._window_id2zone_id then
+            tiler._window_id2zone_id[win_id] = zone.id
+        end
+    end
+
+    enhanced_debug_log("Added window", win_id, "to zone", zone.id)
+end
+
+local function resize_window_in_zone(zone, win_id)
+    -- Look for the appropriate zone resize function
+    if tiler and tiler.zone_resize_window then -- Method in tiler
+        return tiler.zone_resize_window(zone, win_id)
+    elseif zone_resize_window then -- Global function from tiler
+        return zone_resize_window(zone, win_id)
+    else
+        -- Fallback implementation
+        local window = hs.window.get(win_id)
+        if not isValid(window) then
+            enhanced_debug_log("Cannot resize invalid window", win_id)
+            return false
+        end
+
+        -- Get the tile for this window
+        local tile_idx = zone.window_to_tile_idx and zone.window_to_tile_idx[win_id] or 0
+        local tile = zone.tiles[tile_idx]
+        if not tile then
+            enhanced_debug_log("Invalid tile index", tile_idx, "for window", win_id)
+            return false
+        end
+
+        -- Create frame from tile
+        local frame = {
+            x = tile.x,
+            y = tile.y,
+            w = tile.width,
+            h = tile.height
+        }
+
+        -- Apply frame to window
+        local saved_duration = hs.window.animationDuration
+        hs.window.animationDuration = 0
+        window:setFrame(frame)
+        hs.window.animationDuration = saved_duration
+
+        enhanced_debug_log("Resized window", win_id, "to match zone", zone.id, "tile", tile_idx)
+        return true
+    end
+end
+
 -- Sanitize monitor name for filenames
 local function sanitize_name(name)
     if not name then
@@ -86,7 +170,12 @@ local function load_screen_cache(screen)
         end)
         if status and data and data.apps then
             window_memory.cache_data[screen_id].apps = data.apps
-            debug_log("Loaded position data for", table.count(data.apps), "apps")
+            -- Count number of apps using a proper count method
+            local app_count = 0
+            for _ in pairs(data.apps) do
+                app_count = app_count + 1
+            end
+            debug_log("Loaded position data for", app_count, "apps")
             return true
         else
             debug_log("Failed to parse cache file:", filename)
@@ -188,7 +277,7 @@ end
 
 -- Store current window position in cache
 function window_memory.remember_current_window(win)
-    if not win or not win:isStandard() then
+    if not isValid(win) then
         return false
     end
 
@@ -248,7 +337,7 @@ end
 
 -- Update position cache when a window is moved
 local function handle_window_moved(win)
-    if not win or not win:isStandard() then
+    if not isValid(win) then
         return
     end
 
@@ -270,7 +359,7 @@ end
 
 -- Apply a remembered position to a window
 function window_memory.apply_remembered_position(win)
-    if not win or not win:isStandard() then
+    if not isValid(win) then
         return false
     end
 
@@ -330,16 +419,23 @@ function window_memory.apply_remembered_position(win)
         if target_zone then
             -- Add window to the zone at the remembered tile index
             enhanced_debug_log("Adding window to zone:", target_zone.id)
-            target_zone:add_window(win_id)
+            add_window_to_zone(target_zone, win_id)
 
             -- Set the specific tile index if provided
             if position_data.tile_idx ~= nil and position_data.tile_idx >= 0 then
-                target_zone.window_to_tile_idx[win_id] = position_data.tile_idx
+                if target_zone.window_to_tile_idx then
+                    target_zone.window_to_tile_idx[win_id] = position_data.tile_idx
+                end
 
                 -- Update global tracking
+                if not tiler._window_state then
+                    tiler._window_state = {}
+                end
+
                 if not tiler._window_state[win_id] then
                     tiler._window_state[win_id] = {}
                 end
+
                 tiler._window_state[win_id].zone_id = target_zone.id
                 tiler._window_state[win_id].tile_idx = position_data.tile_idx
 
@@ -348,34 +444,38 @@ function window_memory.apply_remembered_position(win)
 
             -- Apply the tile dimensions
             enhanced_debug_log("Applying tile dimensions")
-            target_zone:resize_window(win_id)
+            resize_window_in_zone(target_zone, win_id)
 
             -- Check if the window actually moved
             hs.timer.doAfter(0.2, function()
-                if win:isValid() then
-                    local current_frame = win:frame()
-                    enhanced_debug_log("Position after applying remembered zone:", "x=" .. current_frame.x,
-                        "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
+                if not isValid(win) then
+                    enhanced_debug_log("Window is no longer valid")
+                    return
+                end
 
-                    -- Check if we need to force reposition
-                    local tile = target_zone.tiles[position_data.tile_idx or 0]
-                    if tile and (math.abs(current_frame.x - tile.x) > 10 or math.abs(current_frame.y - tile.y) > 10 or
-                        math.abs(current_frame.w - tile.width) > 10 or math.abs(current_frame.h - tile.height) > 10) then
+                local current_frame = win:frame()
+                enhanced_debug_log("Position after applying remembered zone:", "x=" .. current_frame.x,
+                    "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
 
-                        enhanced_debug_log("Window didn't resize correctly, trying more forceful approach")
+                -- Check if we need to force reposition
+                local tile_idx = position_data.tile_idx or 0
+                local tile = target_zone.tiles and target_zone.tiles[tile_idx]
+                if tile and (math.abs(current_frame.x - tile.x) > 10 or math.abs(current_frame.y - tile.y) > 10 or
+                    math.abs(current_frame.w - tile.width) > 10 or math.abs(current_frame.h - tile.height) > 10) then
 
-                        -- More forceful approach for stubborn windows
-                        local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
+                    enhanced_debug_log("Window didn't resize correctly, trying more forceful approach")
 
-                        -- Force move to screen first
-                        win:moveToScreen(target_zone.screen, false, true, 0)
+                    -- More forceful approach for stubborn windows
+                    local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
 
-                        -- Then set frame with animation disabled
-                        local saved_duration = hs.window.animationDuration
-                        hs.window.animationDuration = 0
-                        win:setFrame(frame)
-                        hs.window.animationDuration = saved_duration
-                    end
+                    -- Force move to screen first
+                    win:moveToScreen(target_zone.screen, false, true, 0)
+
+                    -- Then set frame with animation disabled
+                    local saved_duration = hs.window.animationDuration
+                    hs.window.animationDuration = 0
+                    win:setFrame(frame)
+                    hs.window.animationDuration = saved_duration
                 end
             end)
 
@@ -402,22 +502,25 @@ function window_memory.apply_remembered_position(win)
 
         -- Check if the window actually moved
         hs.timer.doAfter(0.2, function()
-            if win:isValid() then
-                local current_frame = win:frame()
-                enhanced_debug_log("Position after applying remembered frame:", "x=" .. current_frame.x,
-                    "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
+            if not isValid(win) then
+                enhanced_debug_log("Window is no longer valid")
+                return
+            end
 
-                -- Check if we need to force reposition
-                if math.abs(current_frame.x - frame.x) > 10 or math.abs(current_frame.y - frame.y) > 10 or
-                    math.abs(current_frame.w - frame.w) > 10 or math.abs(current_frame.h - frame.h) > 10 then
+            local current_frame = win:frame()
+            enhanced_debug_log("Position after applying remembered frame:", "x=" .. current_frame.x,
+                "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
 
-                    enhanced_debug_log("Window didn't move correctly, trying again with more force")
+            -- Check if we need to force reposition
+            if math.abs(current_frame.x - frame.x) > 10 or math.abs(current_frame.y - frame.y) > 10 or
+                math.abs(current_frame.w - frame.w) > 10 or math.abs(current_frame.h - frame.h) > 10 then
 
-                    -- Try again with more force
-                    hs.window.animationDuration = 0
-                    win:setFrame(frame)
-                    hs.window.animationDuration = saved_duration
-                end
+                enhanced_debug_log("Window didn't move correctly, trying again with more force")
+
+                -- Try again with more force
+                hs.window.animationDuration = 0
+                win:setFrame(frame)
+                hs.window.animationDuration = saved_duration
             end
         end)
 
@@ -426,9 +529,10 @@ function window_memory.apply_remembered_position(win)
 
     return false
 end
+
 -- Find the best matching zone for a window
 function window_memory.find_best_zone_for_window(win)
-    if not win or not win:isStandard() then
+    if not isValid(win) then
         return nil
     end
 
@@ -539,7 +643,7 @@ end
 
 -- Handle window creation for window memory
 function window_memory.handle_window_created(win)
-    if not win or not win:isStandard() then
+    if not isValid(win) then
         enhanced_debug_log("Ignoring non-standard window")
         return
     end
@@ -598,7 +702,7 @@ function window_memory.handle_window_created(win)
 
     hs.timer.doAfter(init_delay, function()
         -- Window might no longer be valid
-        if not win:isValid() then
+        if not isValid(win) then
             enhanced_debug_log("Window is no longer valid")
             return
         end
@@ -612,11 +716,14 @@ function window_memory.handle_window_created(win)
 
             -- Double-check final position after a short delay
             hs.timer.doAfter(0.2, function()
-                if win:isValid() then
-                    local current_frame = win:frame()
-                    enhanced_debug_log("Final window position:", "x=" .. current_frame.x, "y=" .. current_frame.y,
-                        "w=" .. current_frame.w, "h=" .. current_frame.h)
+                if not isValid(win) then
+                    enhanced_debug_log("Window is no longer valid")
+                    return
                 end
+
+                local current_frame = win:frame()
+                enhanced_debug_log("Final window position:", "x=" .. current_frame.x, "y=" .. current_frame.y,
+                    "w=" .. current_frame.w, "h=" .. current_frame.h)
             end)
         else
             enhanced_debug_log("No remembered position found, attempting zone matching")
@@ -630,50 +737,60 @@ function window_memory.handle_window_created(win)
                 enhanced_debug_log("Auto-snapping window to zone:", zone.id, "tile:", tile_idx)
 
                 -- Add the window to the zone
-                zone:add_window(win_id)
+                add_window_to_zone(zone, win_id)
 
                 -- Set the specific tile index
-                zone.window_to_tile_idx[win_id] = tile_idx
+                if zone.window_to_tile_idx then
+                    zone.window_to_tile_idx[win_id] = tile_idx
+                end
 
                 -- Update global tracking
+                if not tiler._window_state then
+                    tiler._window_state = {}
+                end
+
                 if not tiler._window_state[win_id] then
                     tiler._window_state[win_id] = {}
                 end
+
                 tiler._window_state[win_id].zone_id = zone.id
                 tiler._window_state[win_id].tile_idx = tile_idx
 
                 -- Apply the tile dimensions
                 enhanced_debug_log("Applying zone dimensions")
-                zone:resize_window(win_id)
+                resize_window_in_zone(zone, win_id)
 
                 -- Double-check final position after a short delay
                 hs.timer.doAfter(0.2, function()
-                    if win:isValid() then
-                        local current_frame = win:frame()
-                        enhanced_debug_log("Final window position:", "x=" .. current_frame.x, "y=" .. current_frame.y,
-                            "w=" .. current_frame.w, "h=" .. current_frame.h)
+                    if not isValid(win) then
+                        enhanced_debug_log("Window is no longer valid")
+                        return
+                    end
 
-                        -- If position is still near initial, force resize again
-                        if math.abs(current_frame.x - initial_frame.x) < 10 and
-                            math.abs(current_frame.y - initial_frame.y) < 10 then
-                            enhanced_debug_log("Window did not move, forcing resize again")
+                    local current_frame = win:frame()
+                    enhanced_debug_log("Final window position:", "x=" .. current_frame.x, "y=" .. current_frame.y,
+                        "w=" .. current_frame.w, "h=" .. current_frame.h)
 
-                            -- Try again with a bit more force for stubborn windows
-                            local tile = zone.tiles[tile_idx]
-                            if tile then
-                                local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
+                    -- If position is still near initial, force resize again
+                    if math.abs(current_frame.x - initial_frame.x) < 10 and math.abs(current_frame.y - initial_frame.y) <
+                        10 then
+                        enhanced_debug_log("Window did not move, forcing resize again")
 
-                                -- Force move to screen first
-                                win:moveToScreen(zone.screen, false, true, 0)
+                        -- Try again with a bit more force for stubborn windows
+                        local tile = zone.tiles[tile_idx]
+                        if tile then
+                            local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
 
-                                -- Then set frame with animation disabled
-                                local saved_duration = hs.window.animationDuration
-                                hs.window.animationDuration = 0
-                                win:setFrame(frame)
-                                hs.window.animationDuration = saved_duration
+                            -- Force move to screen first
+                            win:moveToScreen(zone.screen, false, true, 0)
 
-                                enhanced_debug_log("Applied forced resize")
-                            end
+                            -- Then set frame with animation disabled
+                            local saved_duration = hs.window.animationDuration
+                            hs.window.animationDuration = 0
+                            win:setFrame(frame)
+                            hs.window.animationDuration = saved_duration
+
+                            enhanced_debug_log("Applied forced resize")
                         end
                     end
                 end)
@@ -711,40 +828,43 @@ function window_memory.handle_window_created(win)
                     if target_zone then
                         -- Add the window to the zone
                         enhanced_debug_log("Adding window to default zone:", target_zone.id)
-                        target_zone:add_window(win_id)
+                        add_window_to_zone(target_zone, win_id)
 
                         -- Apply the tile dimensions
                         enhanced_debug_log("Applying default zone dimensions")
-                        target_zone:resize_window(win_id)
+                        resize_window_in_zone(target_zone, win_id)
 
                         -- Double-check final position after a short delay
                         hs.timer.doAfter(0.2, function()
-                            if win:isValid() then
-                                local current_frame = win:frame()
-                                enhanced_debug_log("Final window position:", "x=" .. current_frame.x,
-                                    "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
+                            if not isValid(win) then
+                                enhanced_debug_log("Window is no longer valid")
+                                return
+                            end
 
-                                -- If position is still near initial, force resize again
-                                if math.abs(current_frame.x - initial_frame.x) < 10 and
-                                    math.abs(current_frame.y - initial_frame.y) < 10 then
-                                    enhanced_debug_log("Window did not move, forcing resize again")
+                            local current_frame = win:frame()
+                            enhanced_debug_log("Final window position:", "x=" .. current_frame.x,
+                                "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
 
-                                    -- Try again with a bit more force for stubborn windows
-                                    local tile = target_zone.tiles[0] -- Use first tile configuration
-                                    if tile then
-                                        local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
+                            -- If position is still near initial, force resize again
+                            if math.abs(current_frame.x - initial_frame.x) < 10 and
+                                math.abs(current_frame.y - initial_frame.y) < 10 then
+                                enhanced_debug_log("Window did not move, forcing resize again")
 
-                                        -- Force move to screen first
-                                        win:moveToScreen(target_zone.screen, false, true, 0)
+                                -- Try again with a bit more force for stubborn windows
+                                local tile = target_zone.tiles[0] -- Use first tile configuration
+                                if tile then
+                                    local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
 
-                                        -- Then set frame with animation disabled
-                                        local saved_duration = hs.window.animationDuration
-                                        hs.window.animationDuration = 0
-                                        win:setFrame(frame)
-                                        hs.window.animationDuration = saved_duration
+                                    -- Force move to screen first
+                                    win:moveToScreen(target_zone.screen, false, true, 0)
 
-                                        enhanced_debug_log("Applied forced resize")
-                                    end
+                                    -- Then set frame with animation disabled
+                                    local saved_duration = hs.window.animationDuration
+                                    hs.window.animationDuration = 0
+                                    win:setFrame(frame)
+                                    hs.window.animationDuration = saved_duration
+
+                                    enhanced_debug_log("Applied forced resize")
                                 end
                             end
                         end)
@@ -800,7 +920,7 @@ function window_memory.apply_all_positions()
     local success_count = 0
 
     for _, win in ipairs(windows) do
-        if win:isStandard() and not win:isMinimized() then
+        if isValid(win) then
             local success = window_memory.apply_remembered_position(win)
             if success then
                 success_count = success_count + 1
@@ -820,8 +940,8 @@ function window_memory.setup_watchers()
         window_memory._window_watcher:setDefaultFilter{}
 
         -- Watch for window movement and changes
+        -- Use the proper constant for windowMoved
         window_memory._window_watcher:subscribe(hs.window.filter.windowMoved, handle_window_moved)
-        window_memory._window_watcher:subscribe(hs.window.filter.windowResized, handle_window_moved)
     end
 
     -- Screen watcher to handle new or changed screens
