@@ -699,7 +699,8 @@ function layout_utils.calculate_tile_position(screen, col_start, row_start, col_
 end
 
 -- Create a tile based on grid coordinates
-function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, cols)
+-- Create a tile based on grid coordinates
+function layout_utils.create_tile_from_grid_coords(screen, coord_string, rows, cols)
     -- Get the screen's absolute frame
     local display_rect = screen:frame()
     local w = display_rect.w
@@ -713,9 +714,9 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
     end
 
     -- Handle different coordinate formats using the grid_coords utility
-    if type(grid_coords) == "string" then
+    if type(coord_string) == "string" then
         -- Named positions
-        if grid_coords == "full" then
+        if coord_string == "full" then
             return {
                 x = x,
                 y = y,
@@ -723,7 +724,7 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
                 height = h,
                 description = "Full screen"
             }
-        elseif grid_coords == "center" then
+        elseif coord_string == "center" then
             return {
                 x = x + w / 4,
                 y = y + h / 4,
@@ -731,7 +732,7 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
                 height = h / 2,
                 description = "Center"
             }
-        elseif grid_coords == "left-half" then
+        elseif coord_string == "left-half" then
             return {
                 x = x,
                 y = y,
@@ -739,7 +740,7 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
                 height = h,
                 description = "Left half"
             }
-        elseif grid_coords == "right-half" then
+        elseif coord_string == "right-half" then
             return {
                 x = x + w / 2,
                 y = y,
@@ -747,7 +748,7 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
                 height = h,
                 description = "Right half"
             }
-        elseif grid_coords == "top-half" then
+        elseif coord_string == "top-half" then
             return {
                 x = x,
                 y = y,
@@ -755,7 +756,7 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
                 height = h / 2,
                 description = "Top half"
             }
-        elseif grid_coords == "bottom-half" then
+        elseif coord_string == "bottom-half" then
             return {
                 x = x,
                 y = y + h / 2,
@@ -767,9 +768,9 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
     end
 
     -- Parse grid coordinates
-    local parsed_coords = grid_coords.parse(grid_coords, cols, rows)
+    local parsed_coords = grid_coords.parse(coord_string, cols, rows)
     if not parsed_coords then
-        debug_log("Invalid grid coordinates:", grid_coords)
+        debug_log("Invalid grid coordinates:", coord_string)
         return nil
     end
 
@@ -789,9 +790,99 @@ function layout_utils.create_tile_from_grid_coords(screen, grid_coords, rows, co
     local tile_pos = layout_utils.calculate_tile_position(screen, col_start, row_start, col_end, row_end, rows, cols)
 
     -- Add the description to the returned table
-    tile_pos.description = grid_coords
+    if type(coord_string) == "string" then
+        tile_pos.description = coord_string
+    else
+        tile_pos.description = "Grid position"
+    end
 
     return tile_pos
+end
+
+-- Get all tiles for a zone configuration
+function layout_utils.get_zone_tiles(screen, zone_key, rows, cols)
+    local screen_name = screen:name()
+    local layout_type = nil
+
+    debug_log(
+        "get_zone_tiles for screen: " .. screen_name .. ", key: " .. zone_key .. ", rows: " .. rows .. ", cols: " ..
+            cols)
+
+    -- 1. Check for custom screens - exact match by name
+    if config.tiler.custom_screens and config.tiler.custom_screens[screen_name] then
+        layout_type = config.tiler.custom_screens[screen_name].layout
+        debug_log("Using custom screen layout: " .. layout_type)
+
+        -- 2. Check for pattern matches in screen names
+    elseif config.tiler.screen_detection and config.tiler.screen_detection.patterns then
+        for pattern, layout in pairs(config.tiler.screen_detection.patterns) do
+            if screen_name:match(pattern) then
+                layout_type = layout
+                debug_log("Matched screen pattern: " .. pattern .. " using layout: " .. layout_type)
+                break
+            end
+        end
+    end
+
+    -- 3. If no match by screen name/pattern, attempt to match by grid dimensions
+    if not layout_type then
+        -- Look through all grid definitions to find a match
+        if config.tiler.grids then
+            for lt, grid in pairs(config.tiler.grids) do
+                if grid.cols == cols and grid.rows == rows then
+                    layout_type = lt
+                    debug_log("Matched grid dimensions " .. cols .. "x" .. rows .. " to layout: " .. layout_type)
+                    break
+                end
+            end
+        end
+    end
+
+    -- 4. If still no match, default to the string representation
+    if not layout_type then
+        layout_type = cols .. "x" .. rows
+        debug_log("No layout match found, using dimensional name: " .. layout_type)
+    end
+
+    -- Get zone configuration for this layout and key
+    local config_entry = nil
+
+    -- First try exact layout and key match
+    if config.tiler.layouts and config.tiler.layouts[layout_type] and config.tiler.layouts[layout_type][zone_key] then
+        config_entry = config.tiler.layouts[layout_type][zone_key]
+        debug_log("Using " .. layout_type .. " layout for zone key: " .. zone_key)
+
+        -- Try default layout for this key
+    elseif config.tiler.layouts and config.tiler.layouts["default"] and config.tiler.layouts["default"][zone_key] then
+        config_entry = config.tiler.layouts["default"][zone_key]
+        debug_log("Using default layout for zone key: " .. zone_key)
+
+        -- Last resort - general default
+    elseif config.tiler.layouts and config.tiler.layouts["default"] and config.tiler.layouts["default"]["default"] then
+        config_entry = config.tiler.layouts["default"]["default"]
+        debug_log("Using default fallback for zone key: " .. zone_key)
+    else
+        -- If all else fails, provide a sensible default
+        config_entry = {"full", "center"}
+        debug_log("No configuration found, using hardcoded default for zone key: " .. zone_key)
+    end
+
+    -- If the config is an empty table, return empty tiles
+    if config_entry and #config_entry == 0 then
+        debug_log("Zone " .. zone_key .. " disabled for layout " .. layout_type)
+        return {}
+    end
+
+    -- Process the tiles
+    local tiles = {}
+    for _, coords in ipairs(config_entry) do
+        local tile = layout_utils.create_tile_from_grid_coords(screen, coords, rows, cols)
+        if tile then
+            table.insert(tiles, tile)
+        end
+    end
+
+    return tiles
 end
 
 -- Get all tiles for a zone configuration
@@ -1052,12 +1143,28 @@ end
 local function zone_add_tile(zone, x, y, width, height, description)
     local tile = tile_new(x, y, width, height)
     if description then
-        tile_set_description(tile, description)
+        -- Make sure description is always a string
+        if type(description) == "table" then
+            -- If it's a table, use a generic description or handle it specially
+            tile_set_description(tile, "Tile position")
+        else
+            tile_set_description(tile, description)
+        end
     end
     zone.tiles[zone.tile_count] = tile
     zone.tile_count = zone.tile_count + 1
-    debug_log("Added tile to zone", zone.id, "total tiles:", zone.tile_count,
-        description and ("(" .. description .. ")") or "")
+
+    -- Format description for logging, ensuring it's a string
+    local desc_text = ""
+    if description then
+        if type(description) == "string" then
+            desc_text = "(" .. description .. ")"
+        else
+            desc_text = "(complex tile definition)"
+        end
+    end
+
+    debug_log("Added tile to zone", zone.id, "total tiles:", zone.tile_count, desc_text)
     return zone -- For method chaining
 end
 
