@@ -1231,16 +1231,6 @@ local function zone_new(id, hotkey, screen)
     return zone
 end
 
--- Convert zone to string for logging
-local function zone_to_string(zone)
-    if not zone then
-        return "nil zone"
-    end
-
-    local desc = zone.description and (" - " .. zone.description) or ""
-    return string.format("Zone(id=%s, tiles=%d%s)", zone.id, zone.tile_count, desc)
-end
-
 -- Set human-readable description for a zone
 local function zone_set_description(zone, desc)
     if not zone then
@@ -1380,45 +1370,6 @@ local function zone_add_window(zone, window_id)
             tile_idx = 0
         }
         debug_log("Remembered position for window", window_id, "on screen", screen_id, "zone", zone.id, "tile", 0)
-    end
-
-    return true
-end
-
--- Remove a window from a zone
-local function zone_remove_window(zone, window_id)
-    if not zone or not window_id then
-        return false
-    end
-
-    if zone.window_to_tile_idx[window_id] == nil then
-        debug_log("Window", window_id, "not in zone", zone.id)
-        return false
-    end
-
-    debug_log("Removing window", window_id, "from zone", zone.id)
-    zone.window_to_tile_idx[window_id] = nil
-
-    -- Only remove from global mapping if it points to THIS zone
-    if tiler._window_id2zone_id[window_id] == zone.id then
-        tiler._window_id2zone_id[window_id] = nil
-    end
-
-    -- If this is a screen-specific zone ID with an underscore
-    local base_id = zone.id:match("^([^_]+)_")
-    if base_id and tiler._window_id2zone_id[window_id] == base_id then
-        tiler._window_id2zone_id[window_id] = nil
-    end
-
-    -- Remove from zone windows list
-    if window_state._zone_windows[zone.id] then
-        for i, wid in ipairs(window_state._zone_windows[zone.id]) do
-            if wid == window_id then
-                table.remove(window_state._zone_windows[zone.id], i)
-                debug_log("Removed window", window_id, "from zone windows list for zone", zone.id)
-                break
-            end
-        end
     end
 
     return true
