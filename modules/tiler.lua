@@ -2531,5 +2531,28 @@ function tiler.start()
     return tiler
 end
 
+-- Expose utility functions for other modules to use
+tiler.window_utils = {
+    isStandard = function(win)
+        return win and win:isStandard()
+    end,
+
+    apply_frame = window_utils.apply_frame
+}
+
+tiler.window_state = {
+    get_window_zone = window_state.get_window_zone,
+    associate_window_with_zone = window_state.associate_window_with_zone
+}
+
+tiler.zone_finder = {
+    find_zone_by_id_on_screen = zone_finder.find_zone_by_id_on_screen,
+    find_best_zone_for_window = zone_finder.find_best_zone_for_window
+}
+
+tiler.rect = {
+    frames_match = rect.frames_match
+}
+
 -- Return the tiler object for configuration
 return tiler

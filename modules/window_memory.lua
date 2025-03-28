@@ -27,88 +27,57 @@ local function enhanced_debug_log(...)
     end
 end
 
--- Helper function to check if a window reference is valid
-local function isValid(win)
-    if not win then
+-- Check if an app is in the exclusion list
+local function isExcludedApp(app_name)
+    if not config.window_memory or not config.window_memory.excluded_apps then
         return false
     end
 
-    -- Use pcall to safely check if basic window properties can be accessed
-    local success = pcall(function()
-        return win:id()
-    end)
-    if not success then
-        return false
+    for _, excluded_app in ipairs(config.window_memory.excluded_apps) do
+        if app_name == excluded_app then
+            return true
+        end
     end
 
-    -- Additional check: windows should have an application
-    local app = win:application()
-    if not app then
-        return false
-    end
-
-    return true
+    return false
 end
 
--- Wrapper functions to bridge API gap between window_memory and tiler
-local function add_window_to_zone(zone, win_id)
-    -- Use the appropriate function from tiler if available
-    if tiler and tiler.window_state and tiler.window_state.associate_window_with_zone then
-        tiler.window_state.associate_window_with_zone(win_id, zone, 0)
-    else
-        -- Fallback if we can't access the window_state function
-        if zone.window_to_tile_idx then
-            zone.window_to_tile_idx[win_id] = 0
+-- Verify a window's position after placement and force reposition if needed
+local function verify_window_position(win, target, screen, initial_frame)
+    hs.timer.doAfter(0.2, function()
+        -- Early return if window no longer valid
+        if not win:isStandard() then
+            return
         end
 
-        -- Update global tracking
-        if tiler and tiler._window_id2zone_id then
-            tiler._window_id2zone_id[win_id] = zone.id
-        end
-    end
+        local current_frame = win:frame()
+        enhanced_debug_log("Final window position:", "x=" .. current_frame.x, "y=" .. current_frame.y,
+            "w=" .. current_frame.w, "h=" .. current_frame.h)
 
-    enhanced_debug_log("Added window", win_id, "to zone", zone.id)
-end
-
-local function resize_window_in_zone(zone, win_id)
-    -- Look for the appropriate zone resize function
-    if tiler and tiler.zone_resize_window then -- Method in tiler
-        return tiler.zone_resize_window(zone, win_id)
-    elseif zone_resize_window then -- Global function from tiler
-        return zone_resize_window(zone, win_id)
-    else
-        -- Fallback implementation
-        local window = hs.window.get(win_id)
-        if not isValid(window) then
-            enhanced_debug_log("Cannot resize invalid window", win_id)
-            return false
-        end
-
-        -- Get the tile for this window
-        local tile_idx = zone.window_to_tile_idx and zone.window_to_tile_idx[win_id] or 0
-        local tile = zone.tiles[tile_idx]
-        if not tile then
-            enhanced_debug_log("Invalid tile index", tile_idx, "for window", win_id)
-            return false
-        end
-
-        -- Create frame from tile
-        local frame = {
-            x = tile.x,
-            y = tile.y,
-            w = tile.width,
-            h = tile.height
+        -- Create a standard frame object from target (could be a tile or a frame)
+        local target_frame = {
+            x = target.x,
+            y = target.y,
+            width = target.width or target.w,
+            height = target.height or target.h
         }
 
-        -- Apply frame to window
-        local saved_duration = hs.window.animationDuration
-        hs.window.animationDuration = 0
-        window:setFrame(frame)
-        hs.window.animationDuration = saved_duration
+        -- Check if window hasn't moved from initial position (if provided)
+        if initial_frame and math.abs(current_frame.x - initial_frame.x) < 10 and
+            math.abs(current_frame.y - initial_frame.y) < 10 then
+            enhanced_debug_log("Window did not move from initial position, forcing resize")
+            tiler.window_utils.apply_frame(win, target_frame, screen)
+            enhanced_debug_log("Applied forced resize")
+            return
+        end
 
-        enhanced_debug_log("Resized window", win_id, "to match zone", zone.id, "tile", tile_idx)
-        return true
-    end
+        -- Otherwise check if position doesn't match target
+        if not tiler.rect.frames_match(current_frame, target_frame) then
+            enhanced_debug_log("Window position doesn't match target, forcing resize")
+            tiler.window_utils.apply_frame(win, target_frame, screen)
+            enhanced_debug_log("Applied forced resize")
+        end
+    end)
 end
 
 -- Sanitize monitor name for filenames
@@ -143,8 +112,21 @@ local function ensure_directory_exists(dir)
     return true
 end
 
+-- Count items in a table
+local function count_table_items(tbl)
+    local count = 0
+    for _ in pairs(tbl) do
+        count = count + 1
+    end
+    return count
+end
+
 -- Load cache for a specific screen
 local function load_screen_cache(screen)
+    if not screen then
+        return false
+    end
+
     local screen_id = screen:id()
     local screen_name = screen:name()
     local filename = get_cache_filename(screen)
@@ -159,36 +141,37 @@ local function load_screen_cache(screen)
 
     -- Try to read existing cache file
     local file = io.open(filename, "r")
-    if file then
-        debug_log("Loading window position cache for screen:", screen_name)
-        local content = file:read("*all")
-        file:close()
-
-        -- Try to parse the JSON content
-        local status, data = pcall(function()
-            return json.decode(content)
-        end)
-        if status and data and data.apps then
-            window_memory.cache_data[screen_id].apps = data.apps
-            -- Count number of apps using a proper count method
-            local app_count = 0
-            for _ in pairs(data.apps) do
-                app_count = app_count + 1
-            end
-            debug_log("Loaded position data for", app_count, "apps")
-            return true
-        else
-            debug_log("Failed to parse cache file:", filename)
-        end
-    else
+    if not file then
         debug_log("No existing cache file for screen:", screen_name)
+        return false
     end
 
-    return false
+    debug_log("Loading window position cache for screen:", screen_name)
+    local content = file:read("*all")
+    file:close()
+
+    -- Try to parse the JSON content
+    local status, data = pcall(function()
+        return json.decode(content)
+    end)
+
+    if not status or not data or not data.apps then
+        debug_log("Failed to parse cache file:", filename)
+        return false
+    end
+
+    window_memory.cache_data[screen_id].apps = data.apps
+    local app_count = count_table_items(data.apps)
+    debug_log("Loaded position data for", app_count, "apps")
+    return true
 end
 
 -- Save cache for a specific screen
 local function save_screen_cache(screen)
+    if not screen then
+        return false
+    end
+
     local screen_id = screen:id()
     local screen_name = screen:name()
 
@@ -215,20 +198,20 @@ local function save_screen_cache(screen)
     -- Convert to JSON and save
     local json_str = json.encode(data)
     local file = io.open(filename, "w")
-    if file then
-        file:write(json_str)
-        file:close()
-        debug_log("Saved window position cache for screen:", screen_name)
-        return true
-    else
+    if not file then
         debug_log("Failed to write cache file:", filename)
         return false
     end
+
+    file:write(json_str)
+    file:close()
+    debug_log("Saved window position cache for screen:", screen_name)
+    return true
 end
 
 -- Get window positioning data for an app on a specific screen
 function window_memory.get_window_position(app_name, screen)
-    if not screen then
+    if not app_name or not screen then
         return nil
     end
 
@@ -244,16 +227,12 @@ function window_memory.get_window_position(app_name, screen)
     end
 
     -- Look up the app in the cache
-    if window_memory.cache_data[screen_id].apps[app_name] then
-        return window_memory.cache_data[screen_id].apps[app_name]
-    end
-
-    return nil
+    return window_memory.cache_data[screen_id].apps[app_name]
 end
 
 -- Store window positioning data for an app on a specific screen
 function window_memory.save_window_position(app_name, screen, position_data)
-    if not screen then
+    if not app_name or not screen or not position_data then
         return false
     end
 
@@ -277,7 +256,8 @@ end
 
 -- Store current window position in cache
 function window_memory.remember_current_window(win)
-    if not isValid(win) then
+    -- Validate window using tiler's function
+    if not win:isStandard() then
         return false
     end
 
@@ -285,30 +265,16 @@ function window_memory.remember_current_window(win)
     local screen = win:screen()
     local win_id = win:id()
 
-    -- Skip if app is in exclusion list
-    if config.window_memory and config.window_memory.excluded_apps then
-        for _, excluded_app in ipairs(config.window_memory.excluded_apps) do
-            if app_name == excluded_app then
-                debug_log("Skipping excluded app:", app_name)
-                return false
-            end
-        end
+    if isExcludedApp(app_name) then
+        debug_log("Skipping excluded app:", app_name)
+        return false
     end
 
     -- Find the zone this window is in (if any)
-    local current_zone_id = nil
-    local current_tile_idx = nil
-
-    for zone_id, zone in pairs(tiler._zone_id2zone) do
-        if zone.window_to_tile_idx and zone.window_to_tile_idx[win_id] ~= nil then
-            current_zone_id = zone_id
-            current_tile_idx = zone.window_to_tile_idx[win_id]
-            break
-        end
-    end
+    local zone, zone_id = tiler.window_state.get_window_zone(win_id)
 
     -- If window is not in a known zone, use its current frame
-    if not current_zone_id then
+    if not zone_id then
         local frame = win:frame()
         local position_data = {
             frame = {
@@ -324,9 +290,11 @@ function window_memory.remember_current_window(win)
         return window_memory.save_window_position(app_name, screen, position_data)
     else
         -- Window is in a zone, remember the zone and tile index
+        local tile_idx = zone.window_to_tile_idx and zone.window_to_tile_idx[win_id] or 0
+
         local position_data = {
-            zone_id = current_zone_id,
-            tile_idx = current_tile_idx,
+            zone_id = zone_id,
+            tile_idx = tile_idx,
             timestamp = os.time()
         }
 
@@ -337,11 +305,10 @@ end
 
 -- Update position cache when a window is moved
 local function handle_window_moved(win)
-    if not isValid(win) then
+    if not win:isStandard() then
         return
     end
 
-    -- Skip if the window was just created and is being positioned
     local win_id = win:id()
 
     -- Debounce window move events (don't record every single move)
@@ -357,9 +324,34 @@ local function handle_window_moved(win)
     end)
 end
 
+-- Place window in a zone with verification
+local function place_window_in_zone(win, zone, tile_idx, initial_frame)
+    if not win:isStandard() or not zone then
+        return false
+    end
+
+    local win_id = win:id()
+    enhanced_debug_log("Auto-snapping window to zone:", zone.id, "tile:", tile_idx)
+
+    -- Use tiler's functions to place the window
+    tiler.window_state.associate_window_with_zone(win_id, zone, tile_idx)
+    tiler.zone_resize_window(zone, win_id)
+
+    -- Verify position and force resize if needed
+    local tile = zone.tiles[tile_idx or 0]
+    if tile then
+        verify_window_position(win, tile, zone.screen, initial_frame)
+    end
+
+    -- Remember this position for future windows of this app
+    window_memory.remember_current_window(win)
+    return true
+end
+
 -- Apply a remembered position to a window
 function window_memory.apply_remembered_position(win)
-    if not isValid(win) then
+    if not win:isStandard() then
+        enhanced_debug_log("Cannot apply position - invalid window")
         return false
     end
 
@@ -369,14 +361,9 @@ function window_memory.apply_remembered_position(win)
 
     enhanced_debug_log("Applying remembered position for app:", app_name, "window:", win_id)
 
-    -- Skip if app is in exclusion list
-    if config.window_memory and config.window_memory.excluded_apps then
-        for _, excluded_app in ipairs(config.window_memory.excluded_apps) do
-            if app_name == excluded_app then
-                enhanced_debug_log("Skipping excluded app:", app_name)
-                return false
-            end
-        end
+    if isExcludedApp(app_name) then
+        enhanced_debug_log("Skipping excluded app:", app_name)
+        return false
     end
 
     -- Get remembered position for this app
@@ -389,140 +376,48 @@ function window_memory.apply_remembered_position(win)
     enhanced_debug_log("Found remembered position data:", position_data.zone_id or "frame-based",
         position_data.tile_idx or "")
 
-    -- Apply the position based on the data type
+    -- Handle zone-based position
     if position_data.zone_id then
-        -- Find the zone
-        local target_zone = nil
+        -- Use tiler's function to find zone
+        local target_zone = tiler.zone_finder.find_zone_by_id_on_screen(position_data.zone_id, screen)
 
-        -- Try to find exact zone match (including screen-specific zones)
-        if tiler._zone_id2zone[position_data.zone_id] then
-            target_zone = tiler._zone_id2zone[position_data.zone_id]
-            enhanced_debug_log("Found exact zone match:", position_data.zone_id)
-        else
-            -- Look for zone with matching base name on this screen
-            local base_id = position_data.zone_id:match("^([^_]+)")
-            if base_id then
-                local screen_id = screen:id()
-
-                for id, zone in pairs(tiler._zone_id2zone) do
-                    if zone.screen and zone.screen:id() == screen_id then
-                        if id == base_id or id:match("^" .. base_id .. "_") then
-                            target_zone = zone
-                            enhanced_debug_log("Found screen-specific zone match:", id)
-                            break
-                        end
-                    end
-                end
-            end
-        end
-
-        if target_zone then
-            -- Add window to the zone at the remembered tile index
-            enhanced_debug_log("Adding window to zone:", target_zone.id)
-            add_window_to_zone(target_zone, win_id)
-
-            -- Set the specific tile index if provided
-            if position_data.tile_idx ~= nil and position_data.tile_idx >= 0 then
-                if target_zone.window_to_tile_idx then
-                    target_zone.window_to_tile_idx[win_id] = position_data.tile_idx
-                end
-
-                -- Update global tracking
-                if not tiler._window_state then
-                    tiler._window_state = {}
-                end
-
-                if not tiler._window_state[win_id] then
-                    tiler._window_state[win_id] = {}
-                end
-
-                tiler._window_state[win_id].zone_id = target_zone.id
-                tiler._window_state[win_id].tile_idx = position_data.tile_idx
-
-                enhanced_debug_log("Set tile index to:", position_data.tile_idx)
-            end
-
-            -- Apply the tile dimensions
-            enhanced_debug_log("Applying tile dimensions")
-            resize_window_in_zone(target_zone, win_id)
-
-            -- Check if the window actually moved
-            hs.timer.doAfter(0.2, function()
-                if not isValid(win) then
-                    enhanced_debug_log("Window is no longer valid")
-                    return
-                end
-
-                local current_frame = win:frame()
-                enhanced_debug_log("Position after applying remembered zone:", "x=" .. current_frame.x,
-                    "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
-
-                -- Check if we need to force reposition
-                local tile_idx = position_data.tile_idx or 0
-                local tile = target_zone.tiles and target_zone.tiles[tile_idx]
-                if tile and (math.abs(current_frame.x - tile.x) > 10 or math.abs(current_frame.y - tile.y) > 10 or
-                    math.abs(current_frame.w - tile.width) > 10 or math.abs(current_frame.h - tile.height) > 10) then
-
-                    enhanced_debug_log("Window didn't resize correctly, trying more forceful approach")
-
-                    -- More forceful approach for stubborn windows
-                    local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
-
-                    -- Force move to screen first
-                    win:moveToScreen(target_zone.screen, false, true, 0)
-
-                    -- Then set frame with animation disabled
-                    local saved_duration = hs.window.animationDuration
-                    hs.window.animationDuration = 0
-                    win:setFrame(frame)
-                    hs.window.animationDuration = saved_duration
-                end
-            end)
-
-            return true
-        else
+        if not target_zone then
             enhanced_debug_log("Could not find remembered zone:", position_data.zone_id)
+            return false
         end
+
+        -- Add window to the zone with the remembered tile index
+        enhanced_debug_log("Adding window to zone:", target_zone.id)
+        local tile_idx = position_data.tile_idx or 0
+        tiler.window_state.associate_window_with_zone(win_id, target_zone, tile_idx)
+
+        -- Apply the tile dimensions
+        enhanced_debug_log("Applying tile dimensions")
+        tiler.zone_resize_window(target_zone, win_id)
+
+        -- Verify position and force resize if needed
+        local tile = target_zone.tiles[tile_idx]
+        if tile then
+            verify_window_position(win, tile, target_zone.screen)
+        end
+
+        return true
+
+        -- Handle frame-based position
     elseif position_data.frame then
-        -- Apply the exact frame
         enhanced_debug_log("Applying exact frame position")
-        local frame = hs.geometry.rect(position_data.frame.x, position_data.frame.y, position_data.frame.w,
-            position_data.frame.h)
+        local frame = {
+            x = position_data.frame.x,
+            y = position_data.frame.y,
+            width = position_data.frame.w,
+            height = position_data.frame.h
+        }
 
-        -- Save animation duration and disable animations temporarily
-        local saved_duration = hs.window.animationDuration
-        hs.window.animationDuration = 0
+        -- Apply frame
+        tiler.window_utils.apply_frame(win, frame)
 
-        win:setFrame(frame)
-
-        -- Restore animation duration
-        hs.window.animationDuration = saved_duration
-
-        enhanced_debug_log("Applied remembered frame position for app:", app_name)
-
-        -- Check if the window actually moved
-        hs.timer.doAfter(0.2, function()
-            if not isValid(win) then
-                enhanced_debug_log("Window is no longer valid")
-                return
-            end
-
-            local current_frame = win:frame()
-            enhanced_debug_log("Position after applying remembered frame:", "x=" .. current_frame.x,
-                "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
-
-            -- Check if we need to force reposition
-            if math.abs(current_frame.x - frame.x) > 10 or math.abs(current_frame.y - frame.y) > 10 or
-                math.abs(current_frame.w - frame.w) > 10 or math.abs(current_frame.h - frame.h) > 10 then
-
-                enhanced_debug_log("Window didn't move correctly, trying again with more force")
-
-                -- Try again with more force
-                hs.window.animationDuration = 0
-                win:setFrame(frame)
-                hs.window.animationDuration = saved_duration
-            end
-        end)
+        -- Verify position and force resize if needed
+        verify_window_position(win, frame)
 
         return true
     end
@@ -530,120 +425,9 @@ function window_memory.apply_remembered_position(win)
     return false
 end
 
--- Find the best matching zone for a window
-function window_memory.find_best_zone_for_window(win)
-    if not isValid(win) then
-        return nil
-    end
-
-    local screen = win:screen()
-    if not screen then
-        return nil
-    end
-
-    local screen_id = screen:id()
-    local win_frame = win:frame()
-
-    -- Find zones on this specific screen
-    local screen_zones = {}
-    for id, zone in pairs(tiler._zone_id2zone) do
-        if zone.screen and zone.screen:id() == screen_id then
-            table.insert(screen_zones, zone)
-        end
-    end
-
-    if #screen_zones == 0 then
-        debug_log("No zones found for screen:", screen:name())
-        return nil
-    end
-
-    -- Find best matching zone based on window position and size
-    local best_zone = nil
-    local best_match_score = 0
-    local best_tile_idx = 0
-
-    for _, zone in ipairs(screen_zones) do
-        -- Skip zones with no tiles
-        if zone.tile_count == 0 then
-            goto next_zone
-        end
-
-        -- Check each tile in the zone
-        for i = 0, zone.tile_count - 1 do
-            local tile = zone.tiles[i]
-            if not tile then
-                goto next_tile
-            end
-
-            -- Calculate overlap between window and tile
-            local tile_frame = {
-                x = tile.x,
-                y = tile.y,
-                w = tile.width,
-                h = tile.height
-            }
-
-            -- Calculate overlap area
-            local x_overlap = math.max(0, math.min(win_frame.x + win_frame.w, tile_frame.x + tile_frame.w) -
-                math.max(win_frame.x, tile_frame.x))
-
-            local y_overlap = math.max(0, math.min(win_frame.y + win_frame.h, tile_frame.y + tile_frame.h) -
-                math.max(win_frame.y, tile_frame.y))
-
-            local overlap_area = x_overlap * y_overlap
-
-            -- Calculate percentage of window area that overlaps with tile
-            local win_area = win_frame.w * win_frame.h
-            local overlap_percentage = win_area > 0 and (overlap_area / win_area) or 0
-
-            -- Calculate size similarity (how close the window and tile are in size)
-            local width_ratio = math.min(win_frame.w, tile_frame.w) / math.max(win_frame.w, tile_frame.w)
-            local height_ratio = math.min(win_frame.h, tile_frame.h) / math.max(win_frame.h, tile_frame.h)
-            local size_similarity = (width_ratio + height_ratio) / 2
-
-            -- Calculate center distance
-            local win_center_x = win_frame.x + win_frame.w / 2
-            local win_center_y = win_frame.y + win_frame.h / 2
-            local tile_center_x = tile_frame.x + tile_frame.w / 2
-            local tile_center_y = tile_frame.y + tile_frame.h / 2
-            local center_distance = math.sqrt((win_center_x - tile_center_x) ^ 2 + (win_center_y - tile_center_y) ^ 2)
-
-            -- Normalize center distance to screen size
-            local screen_frame = screen:frame()
-            local screen_diagonal = math.sqrt(screen_frame.w ^ 2 + screen_frame.h ^ 2)
-            local normalized_distance = 1 - (center_distance / screen_diagonal)
-
-            -- Combined score (50% overlap, 30% size similarity, 20% center proximity)
-            local score = (overlap_percentage * 0.5) + (size_similarity * 0.3) + (normalized_distance * 0.2)
-
-            -- Check if this is best match so far
-            if score > best_match_score and score > 0.4 then -- Must be at least 40% match
-                best_match_score = score
-                best_zone = zone
-                best_tile_idx = i
-            end
-
-            ::next_tile::
-        end
-
-        ::next_zone::
-    end
-
-    if best_zone and best_match_score > 0 then
-        debug_log("Found best matching zone:", best_zone.id, "with score:", best_match_score)
-        return {
-            zone = best_zone,
-            tile_idx = best_tile_idx,
-            score = best_match_score
-        }
-    end
-
-    return nil
-end
-
 -- Handle window creation for window memory
 function window_memory.handle_window_created(win)
-    if not isValid(win) then
+    if not win:isStandard() then
         enhanced_debug_log("Ignoring non-standard window")
         return
     end
@@ -653,32 +437,20 @@ function window_memory.handle_window_created(win)
 
     enhanced_debug_log("New window created - ID:", win_id, "App:", app_name)
 
-    -- Skip if app is in exclusion list
-    if config.window_memory and config.window_memory.excluded_apps then
-        for _, excluded_app in ipairs(config.window_memory.excluded_apps) do
-            if app_name == excluded_app then
-                enhanced_debug_log("Skipping excluded app:", app_name)
-                return
-            end
-        end
-    end
-
-    -- Check if window is already in a zone (for windows restored at startup)
-    local already_in_zone = false
-    for zone_id, zone in pairs(tiler._zone_id2zone) do
-        if zone.window_to_tile_idx and zone.window_to_tile_idx[win_id] ~= nil then
-            already_in_zone = true
-            enhanced_debug_log("Window", win_id, "already in zone", zone_id, "- skipping auto-tile")
-            break
-        end
-    end
-
-    -- Don't auto-tile windows that are already assigned to a zone
-    if already_in_zone then
+    if isExcludedApp(app_name) then
+        enhanced_debug_log("Skipping excluded app:", app_name)
         return
     end
 
-    -- If a window is fullscreen, don't auto-tile it
+    -- Check if window is already in a zone (for windows restored at startup)
+    for zone_id, zone in pairs(tiler._zone_id2zone) do
+        if zone.window_to_tile_idx and zone.window_to_tile_idx[win_id] ~= nil then
+            enhanced_debug_log("Window", win_id, "already in zone", zone_id, "- skipping auto-tile")
+            return
+        end
+    end
+
+    -- Skip fullscreen windows
     if win:isFullScreen() then
         enhanced_debug_log("Window is fullscreen, skipping auto-tile")
         return
@@ -689,10 +461,8 @@ function window_memory.handle_window_created(win)
     enhanced_debug_log("Initial window position:", "x=" .. initial_frame.x, "y=" .. initial_frame.y,
         "w=" .. initial_frame.w, "h=" .. initial_frame.h)
 
-    -- Longer delay for all apps to ensure they're fully initialized
+    -- Determine delay based on app
     local init_delay = 0.3
-
-    -- Even longer delay for known problem apps
     if tiler.is_problem_app and tiler.is_problem_app(app_name) then
         init_delay = 0.5
         enhanced_debug_log("Using longer delay for problem app:", app_name)
@@ -701,186 +471,61 @@ function window_memory.handle_window_created(win)
     enhanced_debug_log("Scheduling window positioning with delay:", init_delay, "seconds")
 
     hs.timer.doAfter(init_delay, function()
-        -- Window might no longer be valid
-        if not isValid(win) then
+        if not win:isStandard() then
             enhanced_debug_log("Window is no longer valid")
             return
         end
 
-        -- Try to apply remembered position
+        -- Try to apply remembered position first
         enhanced_debug_log("Attempting to apply remembered position for app:", app_name)
         local success = window_memory.apply_remembered_position(win)
 
         if success then
             enhanced_debug_log("Applied remembered position successfully")
-
-            -- Double-check final position after a short delay
-            hs.timer.doAfter(0.2, function()
-                if not isValid(win) then
-                    enhanced_debug_log("Window is no longer valid")
-                    return
-                end
-
-                local current_frame = win:frame()
-                enhanced_debug_log("Final window position:", "x=" .. current_frame.x, "y=" .. current_frame.y,
-                    "w=" .. current_frame.w, "h=" .. current_frame.h)
-            end)
-        else
-            enhanced_debug_log("No remembered position found, attempting zone matching")
-            -- No remembered position, try to match to a zone
-            local match = window_memory.find_best_zone_for_window(win)
-
-            if match and match.zone then
-                local zone = match.zone
-                local tile_idx = match.tile_idx
-
-                enhanced_debug_log("Auto-snapping window to zone:", zone.id, "tile:", tile_idx)
-
-                -- Add the window to the zone
-                add_window_to_zone(zone, win_id)
-
-                -- Set the specific tile index
-                if zone.window_to_tile_idx then
-                    zone.window_to_tile_idx[win_id] = tile_idx
-                end
-
-                -- Update global tracking
-                if not tiler._window_state then
-                    tiler._window_state = {}
-                end
-
-                if not tiler._window_state[win_id] then
-                    tiler._window_state[win_id] = {}
-                end
-
-                tiler._window_state[win_id].zone_id = zone.id
-                tiler._window_state[win_id].tile_idx = tile_idx
-
-                -- Apply the tile dimensions
-                enhanced_debug_log("Applying zone dimensions")
-                resize_window_in_zone(zone, win_id)
-
-                -- Double-check final position after a short delay
-                hs.timer.doAfter(0.2, function()
-                    if not isValid(win) then
-                        enhanced_debug_log("Window is no longer valid")
-                        return
-                    end
-
-                    local current_frame = win:frame()
-                    enhanced_debug_log("Final window position:", "x=" .. current_frame.x, "y=" .. current_frame.y,
-                        "w=" .. current_frame.w, "h=" .. current_frame.h)
-
-                    -- If position is still near initial, force resize again
-                    if math.abs(current_frame.x - initial_frame.x) < 10 and math.abs(current_frame.y - initial_frame.y) <
-                        10 then
-                        enhanced_debug_log("Window did not move, forcing resize again")
-
-                        -- Try again with a bit more force for stubborn windows
-                        local tile = zone.tiles[tile_idx]
-                        if tile then
-                            local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
-
-                            -- Force move to screen first
-                            win:moveToScreen(zone.screen, false, true, 0)
-
-                            -- Then set frame with animation disabled
-                            local saved_duration = hs.window.animationDuration
-                            hs.window.animationDuration = 0
-                            win:setFrame(frame)
-                            hs.window.animationDuration = saved_duration
-
-                            enhanced_debug_log("Applied forced resize")
-                        end
-                    end
-                end)
-
-                -- Remember this position for future windows of this app
-                window_memory.remember_current_window(win)
-            elseif config.window_memory and config.window_memory.auto_tile_fallback then
-                -- If configured, fall back to default auto-tiling
-                enhanced_debug_log("Using fallback auto-tiling for app:", app_name)
-
-                -- Find default zone for this app
-                local default_zone = config.window_memory.default_zone or "center"
-                if config.window_memory.app_zones and config.window_memory.app_zones[app_name] then
-                    default_zone = config.window_memory.app_zones[app_name]
-                    enhanced_debug_log("Using app-specific default zone:", default_zone)
-                end
-
-                -- Try to find a matching zone on this screen
-                local screen = win:screen()
-                if screen then
-                    local screen_id = screen:id()
-                    local target_zone = nil
-
-                    -- Look for a zone with matching ID on this screen
-                    for id, zone in pairs(tiler._zone_id2zone) do
-                        if zone.screen and zone.screen:id() == screen_id then
-                            if id == default_zone or id:match("^" .. default_zone .. "_") then
-                                target_zone = zone
-                                enhanced_debug_log("Found matching default zone:", id)
-                                break
-                            end
-                        end
-                    end
-
-                    if target_zone then
-                        -- Add the window to the zone
-                        enhanced_debug_log("Adding window to default zone:", target_zone.id)
-                        add_window_to_zone(target_zone, win_id)
-
-                        -- Apply the tile dimensions
-                        enhanced_debug_log("Applying default zone dimensions")
-                        resize_window_in_zone(target_zone, win_id)
-
-                        -- Double-check final position after a short delay
-                        hs.timer.doAfter(0.2, function()
-                            if not isValid(win) then
-                                enhanced_debug_log("Window is no longer valid")
-                                return
-                            end
-
-                            local current_frame = win:frame()
-                            enhanced_debug_log("Final window position:", "x=" .. current_frame.x,
-                                "y=" .. current_frame.y, "w=" .. current_frame.w, "h=" .. current_frame.h)
-
-                            -- If position is still near initial, force resize again
-                            if math.abs(current_frame.x - initial_frame.x) < 10 and
-                                math.abs(current_frame.y - initial_frame.y) < 10 then
-                                enhanced_debug_log("Window did not move, forcing resize again")
-
-                                -- Try again with a bit more force for stubborn windows
-                                local tile = target_zone.tiles[0] -- Use first tile configuration
-                                if tile then
-                                    local frame = hs.geometry.rect(tile.x, tile.y, tile.width, tile.height)
-
-                                    -- Force move to screen first
-                                    win:moveToScreen(target_zone.screen, false, true, 0)
-
-                                    -- Then set frame with animation disabled
-                                    local saved_duration = hs.window.animationDuration
-                                    hs.window.animationDuration = 0
-                                    win:setFrame(frame)
-                                    hs.window.animationDuration = saved_duration
-
-                                    enhanced_debug_log("Applied forced resize")
-                                end
-                            end
-                        end)
-
-                        -- Remember this position for future windows of this app
-                        window_memory.remember_current_window(win)
-                    else
-                        enhanced_debug_log("Could not find default zone:", default_zone, "on screen:", screen:name())
-                    end
-                else
-                    enhanced_debug_log("Window has no screen")
-                end
-            else
-                enhanced_debug_log("No matching zone found and no fallback configured")
-            end
+            return
         end
+
+        -- No remembered position, try to match to a zone
+        enhanced_debug_log("No remembered position found, attempting zone matching")
+
+        -- Use tiler's function to find best matching zone
+        local match = tiler.zone_finder.find_best_zone_for_window(win)
+
+        if match and match.zone then
+            place_window_in_zone(win, match.zone, match.tile_idx, initial_frame)
+            return
+        end
+
+        -- Fall back to default zone if configured
+        if not config.window_memory or not config.window_memory.auto_tile_fallback then
+            enhanced_debug_log("No matching zone found and no fallback configured")
+            return
+        end
+
+        enhanced_debug_log("Using fallback auto-tiling for app:", app_name)
+
+        -- Find default zone for this app
+        local default_zone_id = config.window_memory.default_zone or "center"
+        if config.window_memory.app_zones and config.window_memory.app_zones[app_name] then
+            default_zone_id = config.window_memory.app_zones[app_name]
+            enhanced_debug_log("Using app-specific default zone:", default_zone_id)
+        end
+
+        -- Find the zone on current screen
+        local screen = win:screen()
+        if not screen then
+            enhanced_debug_log("Window has no screen")
+            return
+        end
+
+        -- Use tiler's function to find zone
+        local target_zone = tiler.zone_finder.find_zone_by_id_on_screen(default_zone_id, screen)
+        if not target_zone then
+            enhanced_debug_log("Could not find default zone:", default_zone_id, "on screen:", screen:name())
+            return
+        end
+
+        place_window_in_zone(win, target_zone, 0, initial_frame)
     end)
 end
 
@@ -890,9 +535,13 @@ function window_memory.save_all_windows_state()
 
     -- Get all visible standard windows
     local windows = hs.window.allWindows()
+    local count = 0
+
     for _, win in ipairs(windows) do
-        if win:isStandard() and not win:isMinimized() then
-            window_memory.remember_current_window(win)
+        if win:isStandard() then
+            if window_memory.remember_current_window(win) then
+                count = count + 1
+            end
         end
     end
 
@@ -901,14 +550,15 @@ function window_memory.save_all_windows_state()
         save_screen_cache(screen)
     end
 
-    debug_log("Window state saved")
+    debug_log("Window state saved for", count, "windows")
+    return count
 end
 
 -- Command to manually capture positions for all open windows
 function window_memory.capture_all_positions()
     debug_log("Capturing positions for all windows")
-    window_memory.save_all_windows_state()
-    hs.alert.show("Window positions captured")
+    local count = window_memory.save_all_windows_state()
+    hs.alert.show("Window positions captured for " .. count .. " windows")
 end
 
 -- Command to apply remembered positions to all windows
@@ -920,7 +570,7 @@ function window_memory.apply_all_positions()
     local success_count = 0
 
     for _, win in ipairs(windows) do
-        if isValid(win) then
+        if win:isStandard() then
             local success = window_memory.apply_remembered_position(win)
             if success then
                 success_count = success_count + 1
@@ -939,8 +589,7 @@ function window_memory.setup_watchers()
         window_memory._window_watcher = hs.window.filter.new()
         window_memory._window_watcher:setDefaultFilter{}
 
-        -- Watch for window movement and changes
-        -- Use the proper constant for windowMoved
+        -- Watch for window movement with the proper event constant
         window_memory._window_watcher:subscribe(hs.window.filter.windowMoved, handle_window_moved)
     end
 
@@ -1005,12 +654,7 @@ function window_memory.init(tiler_module)
     -- Load configuration
     if config.window_memory then
         window_memory.debug = config.window_memory.debug or false
-
-        if config.window_memory.cache_dir then
-            window_memory.cache_dir = config.window_memory.cache_dir
-        else
-            window_memory.cache_dir = os.getenv("HOME") .. "/.config/tiler"
-        end
+        window_memory.cache_dir = config.window_memory.cache_dir or os.getenv("HOME") .. "/.config/tiler"
     else
         window_memory.debug = false
         window_memory.cache_dir = os.getenv("HOME") .. "/.config/tiler"
