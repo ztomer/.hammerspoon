@@ -2746,6 +2746,7 @@ tiler.layout_utils = {
 tiler.smart_placement = {
     place_window = smart_placement.place_window
 }
+tiler.zone_resize_window = zone_resize_window
 
 -- Return the tiler object for configuration
 return tiler
