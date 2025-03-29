@@ -115,7 +115,7 @@ function appSwitcher.init_bindings(appCuts, hyperAppCuts, mash_app, HYPER)
     end
 
     -- Help binding
-    hs.hotkey.bind(mash_app, '/', function()
+    hs.hotkey.bind(mash_app, ';', function()
         appSwitcher.display_help(appCuts, hyperAppCuts)
     end)
 end
